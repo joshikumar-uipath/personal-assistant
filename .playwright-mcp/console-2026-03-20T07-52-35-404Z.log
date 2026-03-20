@@ -1,0 +1,8 @@
+[    3038ms] [WARNING] Manifest: property 'start_url' ignored, should be same origin as document. @ https://platform-cdn.uipath.com/auth0-spa/static/manifest.json:0
+[   43122ms] [WARNING] Manifest: property 'start_url' ignored, should be same origin as document. @ https://platform-cdn.uipath.com/portal/portal/manifest.json:0
+[   43511ms] [WARNING] An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing. @ https://platform-cdn.uipath.com/apollo-packages/portal-shell/3.347.1/p-e081a647.js:0
+[   44219ms] [WARNING] An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing. @ https://staging.uipath.com/portal_/api/tokenFactory/callback?error=login_required&state=4db5091f47fe468d82b6c4ad443edc24&session_state=GeaLbXcUf4GfxniELuBMs2ZxcXAQvVY4YjYvxMkT6kU.A7DEC0227451762053427AC16C619CA2#_=_:0
+[   44259ms] [WARNING] An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing. @ about:blank:0
+[   45505ms] [ERROR] Failed to load resource: the server responded with a status of 404 () @ https://id-preprod.uipath.com/favicon.ico:0
+[   46334ms] [WARNING] Manifest: property 'start_url' ignored, should be same origin as document. @ https://platform-cdn.uipath.com/portal/portal/manifest.json:0
+[   48788ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://staging.uipath.com/mea/apps_/default/api/v1/default/models/with-permissions?pageNumber=0:0

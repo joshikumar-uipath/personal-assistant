@@ -1,0 +1,6 @@
+[    5922ms] [ERROR] Failed to load resource: the server responded with a status of 404 () @ https://id-preprod.uipath.com/favicon.ico:0
+[    7022ms] [ERROR] Failed to load resource: the server responded with a status of 400 () @ https://staging.api.uipath.com/MEA/identity_/connect/token:0
+[    7023ms] [ERROR] OAuth error: {error: invalid_grant} @ http://localhost:5175/@vite/client:509
+[    7024ms] [ERROR] Authentication initialization failed: Error: Failed to complete OAuth: Failed to get access token: {"error":"invalid_grant"}
+    at UiPath.completeOAuth (http://localhost:5175/@fs/Users/joshikumar/Documents/coded-demo/first%20app/uipath-typescript/dist/core/index.mjs:5348:19)
+    at async initializeAuth (http://localhost:5175/src/hooks/useAuth.tsx:20:6) @ http://localhost:5175/@vite/client:509
