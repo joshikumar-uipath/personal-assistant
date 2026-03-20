@@ -21,6 +21,19 @@ interface Props {
   agent: AgentGetResponse;
   conversationalAgent: ConversationalAgent;
   onBack: () => void;
+  onSwitchAgent: (agent: AgentGetResponse) => void;
+}
+
+const GENERIC = ['agent', 'assistant', 'bot', 'ai'];
+function getDisplayName(a: AgentGetResponse): string {
+  const raw = a.name.trim();
+  if (!GENERIC.includes(raw.toLowerCase()) && raw.length > 0) return raw;
+  if (!a.processKey) return raw;
+  const parts = a.processKey.split('.');
+  const useful = parts.filter(p => !GENERIC.includes(p.toLowerCase()) && p.length > 2);
+  if (useful.length === 0) return raw;
+  const first = useful[0], last = useful[useful.length - 1];
+  return (first === last ? first : `${first} · ${last}`).replace(/_/g, ' ');
 }
 
 // Empty-state chips (2-column grid, matches Screen 2 from design)
@@ -35,24 +48,16 @@ const EMPTY_CHIPS = [
 
 function MiniOrb({ size = 28 }: { size?: number }) {
   return (
-    <div
-      className="rounded-full relative overflow-hidden flex-shrink-0"
-      style={{
-        width: size, height: size,
-        background: 'radial-gradient(circle at 35% 25%,rgba(220,240,255,0.9) 0%,rgba(100,180,255,0.8) 20%,rgba(50,120,220,0.9) 50%,rgba(10,40,120,1) 100%)',
-        boxShadow: '0 0 12px rgba(79,172,254,0.4)',
-      }}
-    >
-      <div className="absolute" style={{
-        width: '38%', height: '33%', left: '18%', top: '14%',
-        background: 'radial-gradient(ellipse,rgba(255,255,255,0.5) 0%,transparent 70%)',
-        borderRadius: '50%',
-      }} />
-    </div>
+    <video
+      src="/chat-orb.mp4"
+      autoPlay loop muted playsInline
+      className="flex-shrink-0"
+      style={{ width: size, height: size, objectFit: 'contain', mixBlendMode: 'screen' }}
+    />
   );
 }
 
-export default function ChatView({ agent, onBack }: Props) {
+export default function ChatView({ agent, conversationalAgent, onBack, onSwitchAgent }: Props) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
@@ -60,6 +65,23 @@ export default function ChatView({ agent, onBack }: Props) {
   const [isListening, setIsListening] = useState(false);
   const [transcript, setTranscript] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [showDropdown, setShowDropdown] = useState(false);
+  const [allAgents, setAllAgents] = useState<AgentGetResponse[]>([]);
+
+  // Fetch & deduplicate agents for the switcher
+  useEffect(() => {
+    conversationalAgent.getAll().then((all) => {
+      const byKey = new Map<string, AgentGetResponse>();
+      for (const a of all) {
+        const existing = byKey.get(a.processKey);
+        if (!existing) { byKey.set(a.processKey, a); continue; }
+        const t1 = existing.createdTime ? new Date(existing.createdTime).getTime() : 0;
+        const t2 = a.createdTime ? new Date(a.createdTime).getTime() : 0;
+        if (t2 > t1) byKey.set(a.processKey, a);
+      }
+      setAllAgents(Array.from(byKey.values()));
+    }).catch(() => {});
+  }, [conversationalAgent]);
 
   const convRef = useRef<ConversationGetResponse | null>(null);
   const sessionRef = useRef<SessionStream | null>(null);
@@ -164,12 +186,8 @@ export default function ChatView({ agent, onBack }: Props) {
   /* ── Loading ────────────────────────────────────────────────────── */
   if (isInitializing) {
     return (
-      <div className="flex flex-col items-center justify-center h-full gap-3" style={{ background: '#070b18' }}>
-        <div className="w-12 h-12 rounded-full" style={{
-          background: 'radial-gradient(circle at 35% 25%,rgba(220,240,255,0.9) 0%,rgba(70,140,230,0.9) 50%,rgba(10,40,120,1) 100%)',
-          boxShadow: '0 0 28px rgba(79,172,254,0.55)',
-          animation: 'orb-breathe 2s ease-in-out infinite',
-        }} />
+      <div className="flex flex-col items-center justify-center h-full gap-3" style={{ background: '#000' }}>
+        <video src="/chat-orb.mp4" autoPlay loop muted playsInline style={{ width: 48, height: 48, objectFit: 'contain', mixBlendMode: 'screen' }} />
         <p className="text-sm" style={{ color: 'rgba(147,197,253,0.65)' }}>
           Connecting to {agent.name.replace(/_/g, ' ')}...
         </p>
@@ -189,24 +207,7 @@ export default function ChatView({ agent, onBack }: Props) {
         </div>
         <p className="text-center text-sm mb-6" style={{ color: 'rgba(255,255,255,0.45)' }}>Go ahead, I'm listening...</p>
         <div className="flex-1 flex flex-col items-center justify-center">
-          <div className="relative flex items-center justify-center" style={{ width: 230, height: 230 }}>
-            <div className="absolute rounded-full" style={{
-              inset: '-45%',
-              background: 'radial-gradient(circle,rgba(79,172,254,0.22) 0%,transparent 65%)',
-              animation: 'glow-pulse 2s ease-in-out infinite',
-            }} />
-            <div className="w-full h-full rounded-full relative overflow-hidden" style={{
-              background: 'radial-gradient(circle at 35% 25%,rgba(230,245,255,0.95) 0%,rgba(140,200,255,0.9) 15%,rgba(70,140,230,0.95) 40%,rgba(20,60,160,1) 70%,rgba(8,25,80,1) 100%)',
-              boxShadow: '0 0 80px rgba(79,172,254,0.8),0 0 160px rgba(79,172,254,0.35)',
-              animation: 'orb-breathe 1.8s ease-in-out infinite',
-            }}>
-              <div className="absolute" style={{
-                width: '38%', height: '33%', left: '20%', top: '16%',
-                background: 'radial-gradient(ellipse,rgba(255,255,255,0.6) 0%,transparent 70%)',
-                borderRadius: '50%',
-              }} />
-            </div>
-          </div>
+          <video src="/chat-orb.mp4" autoPlay loop muted playsInline style={{ width: 230, height: 230, objectFit: 'contain', mixBlendMode: 'screen' }} />
           <div className="flex items-end gap-1.5 mt-8" style={{ height: 52 }}>
             {[0.35, 0.6, 1, 0.8, 0.55, 0.95, 0.7, 0.45, 0.85, 0.6].map((h, i) => (
               <div key={i} className="w-1 rounded-full" style={{
@@ -248,37 +249,81 @@ export default function ChatView({ agent, onBack }: Props) {
     <div className="flex flex-col h-full"
       style={{ background: 'linear-gradient(160deg,#070b18 0%,#0d1526 55%,#070b18 100%)' }}>
 
-      {/* Header — back | centered title | menu */}
-      <div
-        className="flex items-center flex-shrink-0 relative px-4 pt-14 pb-3"
-        style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}
-      >
-        <button
-          onClick={onBack}
-          className="w-9 h-9 flex items-center justify-center rounded-full flex-shrink-0"
-          style={{ background: 'rgba(255,255,255,0.07)' }}
-        >
-          <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-          </svg>
-        </button>
-
-        {/* Centered agent name */}
-        <div className="absolute inset-x-0 flex justify-center pointer-events-none">
-          <div className="flex items-center gap-1">
-            <span className="text-white font-semibold text-sm">{agent.name.replace(/_/g, ' ')}</span>
-            <svg className="w-3.5 h-3.5" style={{ color: 'rgba(255,255,255,0.4)' }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+      {/* Header — back | centered title dropdown | menu */}
+      <div className="flex-shrink-0 relative" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+        <div className="flex items-center px-4 pt-14 pb-3">
+          <button
+            onClick={onBack}
+            className="w-9 h-9 flex items-center justify-center rounded-full flex-shrink-0"
+            style={{ background: 'rgba(255,255,255,0.07)' }}
+          >
+            <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
             </svg>
+          </button>
+
+          {/* Clickable agent name */}
+          <div className="flex-1 flex justify-center">
+            <button
+              onClick={() => setShowDropdown(v => !v)}
+              className="flex items-center gap-1"
+            >
+              <span className="text-white font-semibold text-sm">{getDisplayName(agent)}</span>
+              <svg
+                className="w-3.5 h-3.5 transition-transform"
+                style={{ color: 'rgba(255,255,255,0.4)', transform: showDropdown ? 'rotate(180deg)' : 'rotate(0deg)' }}
+                fill="none" viewBox="0 0 24 24" stroke="currentColor"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
           </div>
+
+          <button className="w-8 h-8 flex items-center justify-center flex-shrink-0">
+            <svg className="w-5 h-5" style={{ color: 'rgba(255,255,255,0.4)' }} fill="currentColor" viewBox="0 0 24 24">
+              <circle cx="12" cy="5" r="1.5" /><circle cx="12" cy="12" r="1.5" /><circle cx="12" cy="19" r="1.5" />
+            </svg>
+          </button>
         </div>
 
-        <div className="flex-1" />
-        <button className="w-8 h-8 flex items-center justify-center flex-shrink-0">
-          <svg className="w-5 h-5" style={{ color: 'rgba(255,255,255,0.4)' }} fill="currentColor" viewBox="0 0 24 24">
-            <circle cx="12" cy="5" r="1.5" /><circle cx="12" cy="12" r="1.5" /><circle cx="12" cy="19" r="1.5" />
-          </svg>
-        </button>
+        {/* Agent switcher dropdown */}
+        {showDropdown && allAgents.length > 0 && (
+          <div
+            className="absolute left-4 right-4 z-50 rounded-2xl overflow-hidden"
+            style={{
+              top: '100%',
+              marginTop: 4,
+              background: 'rgba(15,22,40,0.97)',
+              border: '1px solid rgba(255,255,255,0.12)',
+              boxShadow: '0 12px 40px rgba(0,0,0,0.6)',
+              backdropFilter: 'blur(16px)',
+            }}
+          >
+            {allAgents.map((a, idx) => (
+              <button
+                key={a.id}
+                onClick={() => { setShowDropdown(false); onSwitchAgent(a); }}
+                className="w-full flex items-center gap-3 px-4 py-3 text-left transition-colors active:bg-white/10"
+                style={{
+                  borderBottom: idx < allAgents.length - 1 ? '1px solid rgba(255,255,255,0.07)' : 'none',
+                  background: a.id === agent.id ? 'rgba(79,172,254,0.1)' : 'transparent',
+                }}
+              >
+                <div className="flex-1 min-w-0">
+                  <p className="text-white text-sm font-medium truncate">{getDisplayName(a)}</p>
+                  {a.processKey && (
+                    <p className="text-xs truncate" style={{ color: 'rgba(147,197,253,0.45)' }}>{a.processKey}</p>
+                  )}
+                </div>
+                {a.id === agent.id && (
+                  <svg className="w-4 h-4 flex-shrink-0" style={{ color: '#4facfe' }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                  </svg>
+                )}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Error banner */}
@@ -294,24 +339,8 @@ export default function ChatView({ agent, onBack }: Props) {
       <div className="flex-1 overflow-y-auto px-4 py-4">
         {/* Empty state — orb + heading + 6-chip grid (Screen 2) */}
         {messages.length === 0 && (
-          <div className="flex flex-col items-center mt-6 px-2 text-center">
-            <div className="relative flex items-center justify-center mb-5" style={{ width: 80, height: 80 }}>
-              <div className="absolute rounded-full" style={{
-                inset: '-42%',
-                background: 'radial-gradient(circle,rgba(79,172,254,0.18) 0%,transparent 65%)',
-                animation: 'glow-pulse 3s ease-in-out infinite',
-              }} />
-              <div className="w-full h-full rounded-full relative overflow-hidden" style={{
-                background: 'radial-gradient(circle at 35% 25%,rgba(230,245,255,0.95) 0%,rgba(140,200,255,0.9) 15%,rgba(70,140,230,0.95) 40%,rgba(20,60,160,1) 70%,rgba(8,25,80,1) 100%)',
-                boxShadow: '0 0 30px rgba(79,172,254,0.52)',
-              }}>
-                <div className="absolute" style={{
-                  width: '38%', height: '33%', left: '20%', top: '16%',
-                  background: 'radial-gradient(ellipse,rgba(255,255,255,0.55) 0%,transparent 70%)',
-                  borderRadius: '50%',
-                }} />
-              </div>
-            </div>
+          <div className="flex flex-col items-center mt-0 px-2 text-center">
+            <video src="/chat-orb.mp4" autoPlay loop muted playsInline className="mb-2" style={{ width: 340, objectFit: 'contain', mixBlendMode: 'screen' }} />
             <h3 className="text-white font-semibold text-lg mb-1">How can I help you today?</h3>
             <p className="text-sm mb-5" style={{ color: 'rgba(147,197,253,0.5)' }}>
               {agent.description ?? `Ask ${agent.name.replace(/_/g, ' ')} anything`}
@@ -402,13 +431,13 @@ export default function ChatView({ agent, onBack }: Props) {
             border: '1px solid rgba(255,255,255,0.1)',
             backdropFilter: 'blur(12px)',
           }}>
-            <input
-              type="text"
+            <textarea
+              rows={3}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}
               placeholder={isListening ? 'Listening...' : 'Ask me anything...'}
-              className="w-full bg-transparent text-sm outline-none"
+              className="w-full bg-transparent text-sm outline-none resize-none"
               style={{ color: 'rgba(255,255,255,0.9)', caretColor: '#4facfe' }}
               disabled={isStreaming || isListening}
             />

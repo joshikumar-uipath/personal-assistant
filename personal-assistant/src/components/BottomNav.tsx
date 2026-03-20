@@ -1,6 +1,6 @@
 import React from 'react';
 
-export type Tab = 'home' | 'chat' | 'explore' | 'alerts';
+export type Tab = 'home' | 'chat' | 'explore' | 'alerts' | 'profile';
 
 interface Props {
   activeTab: Tab;
@@ -40,11 +40,20 @@ function BellIcon() {
   );
 }
 
+function ProfileIcon() {
+  return (
+    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+    </svg>
+  );
+}
+
 const TABS: { id: Tab; label: string; Icon: () => React.ReactElement; badge?: number }[] = [
   { id: 'home',    label: 'Home',    Icon: HomeIcon },
   { id: 'chat',    label: 'Chat',    Icon: ChatIcon },
   { id: 'explore', label: 'Explore', Icon: ExploreIcon },
   { id: 'alerts',  label: 'Alerts',  Icon: BellIcon, badge: 1 },
+  { id: 'profile', label: 'Profile', Icon: ProfileIcon },
 ];
 
 export default function BottomNav({ activeTab, onTabChange }: Props) {
