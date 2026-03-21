@@ -49,7 +49,7 @@ const EMPTY_CHIPS = [
 function MiniOrb({ size = 28 }: { size?: number }) {
   return (
     <video
-      src="/chat-orb.mp4"
+      src="./chat-orb.mp4"
       autoPlay loop muted playsInline
       className="flex-shrink-0"
       style={{ width: size, height: size, objectFit: 'contain', mixBlendMode: 'screen' }}
@@ -187,7 +187,7 @@ export default function ChatView({ agent, conversationalAgent, onBack, onSwitchA
   if (isInitializing) {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-3" style={{ background: '#000' }}>
-        <video src="/chat-orb.mp4" autoPlay loop muted playsInline style={{ width: 48, height: 48, objectFit: 'contain', mixBlendMode: 'screen' }} />
+        <video src="./chat-orb.mp4" autoPlay loop muted playsInline style={{ width: 48, height: 48, objectFit: 'contain', mixBlendMode: 'screen' }} />
         <p className="text-sm" style={{ color: 'rgba(147,197,253,0.65)' }}>
           Connecting to {agent.name.replace(/_/g, ' ')}...
         </p>
@@ -207,7 +207,7 @@ export default function ChatView({ agent, conversationalAgent, onBack, onSwitchA
         </div>
         <p className="text-center text-sm mb-6" style={{ color: 'rgba(255,255,255,0.45)' }}>Go ahead, I'm listening...</p>
         <div className="flex-1 flex flex-col items-center justify-center">
-          <video src="/chat-orb.mp4" autoPlay loop muted playsInline style={{ width: 230, height: 230, objectFit: 'contain', mixBlendMode: 'screen' }} />
+          <video src="./chat-orb.mp4" autoPlay loop muted playsInline style={{ width: 230, height: 230, objectFit: 'contain', mixBlendMode: 'screen' }} />
           <div className="flex items-end gap-1.5 mt-8" style={{ height: 52 }}>
             {[0.35, 0.6, 1, 0.8, 0.55, 0.95, 0.7, 0.45, 0.85, 0.6].map((h, i) => (
               <div key={i} className="w-1 rounded-full" style={{
@@ -340,7 +340,7 @@ export default function ChatView({ agent, conversationalAgent, onBack, onSwitchA
         {/* Empty state — orb + heading + 6-chip grid (Screen 2) */}
         {messages.length === 0 && (
           <div className="flex flex-col items-center mt-0 px-2 text-center">
-            <video src="/chat-orb.mp4" autoPlay loop muted playsInline className="mb-2" style={{ width: 340, objectFit: 'contain', mixBlendMode: 'screen' }} />
+            <video src="./chat-orb.mp4" autoPlay loop muted playsInline className="mb-2" style={{ width: 340, objectFit: 'contain', mixBlendMode: 'screen' }} />
             <h3 className="text-white font-semibold text-lg mb-1">How can I help you today?</h3>
             <p className="text-sm mb-5" style={{ color: 'rgba(147,197,253,0.5)' }}>
               {agent.description ?? `Ask ${agent.name.replace(/_/g, ' ')} anything`}

@@ -22,7 +22,7 @@ const authConfig: UiPathSDKConfig = {
 function LoadingOrb() {
   return (
     <div className="flex items-center justify-center h-full" style={{ background: '#000' }}>
-      <video src="/orb.mp4" autoPlay loop muted playsInline style={{ width: 56, height: 56, objectFit: 'contain' }} />
+      <video src="./orb.mp4" autoPlay loop muted playsInline style={{ width: 56, height: 56, objectFit: 'contain' }} />
     </div>
   );
 }
@@ -61,7 +61,7 @@ function MainApp() {
         {/* Video orb + title stacked tight */}
         <div className="flex flex-col items-center" style={{ gap: 4 }}>
           <video
-            src="/orb.mp4"
+            src="./orb.mp4"
             autoPlay
             loop
             muted

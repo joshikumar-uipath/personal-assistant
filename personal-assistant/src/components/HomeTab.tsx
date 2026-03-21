@@ -79,28 +79,6 @@ function getDisplayName(agent: AgentGetResponse): string {
   return (first === last ? first : `${first} · ${last}`).replace(/_/g, ' ');
 }
 
-// 4-pointed sparkle star
-function Sparkle({ size, opacity }: { size: number; opacity: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 20 20" fill="none">
-      <path
-        d="M10 0 L11.6 8.4 L20 10 L11.6 11.6 L10 20 L8.4 11.6 L0 10 L8.4 8.4 Z"
-        fill={`rgba(180,225,255,${opacity})`}
-      />
-    </svg>
-  );
-}
-
-const STARS = [
-  { x: 8,  y: 4,  r: 1.5, o: 0.5 }, { x: 22, y: 2,  r: 1,   o: 0.3 },
-  { x: 38, y: 6,  r: 2,   o: 0.4 }, { x: 55, y: 3,  r: 1,   o: 0.6 },
-  { x: 70, y: 5,  r: 1.5, o: 0.3 }, { x: 85, y: 2,  r: 1,   o: 0.5 },
-  { x: 92, y: 8,  r: 2,   o: 0.35 },{ x: 5,  y: 16, r: 1,   o: 0.25 },
-  { x: 95, y: 19, r: 1.5, o: 0.4 }, { x: 12, y: 30, r: 1,   o: 0.3 },
-  { x: 88, y: 33, r: 1,   o: 0.45 },{ x: 3,  y: 44, r: 1.5, o: 0.2 },
-  { x: 97, y: 46, r: 1,   o: 0.3 }, { x: 78, y: 15, r: 1.5, o: 0.3 },
-  { x: 45, y: 1,  r: 1,   o: 0.4 }, { x: 18, y: 24, r: 1,   o: 0.4 },
-];
 
 // Photo-simulation card backgrounds via layered CSS gradients
 const CARD_STYLES = [
@@ -145,7 +123,6 @@ const CARD_STYLES = [
   },
 ];
 
-const CHIPS = ['image edit', 'Generate prompt', 'Deep research'];
 
 interface Props {
   conversationalAgent: ConversationalAgent;
@@ -225,7 +202,7 @@ export default function HomeTab({ conversationalAgent, selectedAgent, onSelectAg
         </p>
         <div className="flex-1 flex flex-col items-center justify-center">
           <video
-            src="/orb.mp4"
+            src="./orb.mp4"
             autoPlay
             loop
             muted
@@ -279,7 +256,7 @@ export default function HomeTab({ conversationalAgent, selectedAgent, onSelectAg
       {/* Video — pushed down with marginTop */}
       <div className="relative flex-shrink-0" style={{ marginTop: 30 }}>
         <video
-          src="/orb.mp4"
+          src="./orb.mp4"
           autoPlay
           loop
           muted
