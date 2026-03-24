@@ -1,9 +1,19 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { ConversationalAgent } from '@uipath/uipath-typescript/conversational-agent';
 import type { AgentGetResponse } from '@uipath/uipath-typescript/conversational-agent';
+import { useTheme } from '../contexts/ThemeContext';
 
 interface SpeechRecognitionEvent {
   results: { [i: number]: { [i: number]: { transcript: string }; isFinal: boolean }; length: number };
+}
+
+interface AgentAction {
+  id: string;
+  ref?: string;
+  amount?: string;
+  text: string;
+  type: 'auto' | 'review';
+  reviewActions?: string[];
 }
 
 interface AgentRunResult {
@@ -12,7 +22,7 @@ interface AgentRunResult {
   tag: string;
   tagColor: string;
   summary: string;
-  detail: string[];
+  actions: AgentAction[];
   timeAgo: string;
   accentColor: string;
 }
@@ -23,11 +33,11 @@ const AGENT_RUN_RESULTS: AgentRunResult[] = [
     agentName: 'Claims Adjuster Agent',
     tag: 'Claims',
     tagColor: 'rgba(59,130,246,0.85)',
-    summary: '3 new claims reviewed — 2 approved, 1 flagged',
-    detail: [
-      'Claim #CLM-4821 — Auto collision, $4,200. Approved. All documents verified.',
-      'Claim #CLM-4822 — Property damage, $11,500. Approved. Assessor report matched.',
-      'Claim #CLM-4823 — Medical, $32,000. ⚠️ Flagged for manual review — missing hospital discharge summary.',
+    summary: '3 claims reviewed — 2 auto-approved, 1 needs you',
+    actions: [
+      { id: 'c1', ref: 'CLM-4821', amount: '$4,200',  type: 'auto',   text: 'Auto collision — all documents verified. Approved & processed.' },
+      { id: 'c2', ref: 'CLM-4822', amount: '$11,500', type: 'auto',   text: 'Property damage — assessor report matched policy. Approved & processed.' },
+      { id: 'c3', ref: 'CLM-4823', amount: '$32,000', type: 'review', text: 'Medical claim — missing hospital discharge summary. Cannot auto-approve.', reviewActions: ['Approve Anyway', 'Request Docs', 'Reject'] },
     ],
     timeAgo: '2 min ago',
     accentColor: 'rgba(59,130,246,0.9)',
@@ -37,13 +47,13 @@ const AGENT_RUN_RESULTS: AgentRunResult[] = [
     agentName: 'Invoice Insight Agent',
     tag: 'Finance',
     tagColor: 'rgba(234,179,8,0.85)',
-    summary: '5 overdue invoices detected — total $12,450',
-    detail: [
-      'INV-0091 — Acme Corp, $3,200 — 14 days overdue. Follow-up email drafted.',
-      'INV-0094 — Beta Solutions, $2,750 — 21 days overdue. Escalation recommended.',
-      'INV-0097 — Gamma Ltd, $1,800 — 9 days overdue.',
-      'INV-0099 — Delta Inc, $2,900 — 30 days overdue. Legal notice advised.',
-      'INV-0103 — Epsilon Co, $1,800 — 7 days overdue.',
+    summary: '5 overdue invoices — 3 actioned, 2 need your approval',
+    actions: [
+      { id: 'i1', ref: 'INV-0091', amount: '$3,200', type: 'auto',   text: 'Acme Corp — 14 days overdue. Follow-up email drafted & sent automatically.' },
+      { id: 'i2', ref: 'INV-0097', amount: '$1,800', type: 'auto',   text: 'Gamma Ltd — 9 days overdue. Reminder scheduled for next business day.' },
+      { id: 'i3', ref: 'INV-0103', amount: '$1,800', type: 'auto',   text: 'Epsilon Co — 7 days overdue. Added to overdue watchlist.' },
+      { id: 'i4', ref: 'INV-0094', amount: '$2,750', type: 'review', text: 'Beta Solutions — 21 days overdue. Agent recommends formal escalation to collections.', reviewActions: ['Approve Escalation', 'Extend Grace', 'Discuss'] },
+      { id: 'i5', ref: 'INV-0099', amount: '$2,900', type: 'review', text: 'Delta Inc — 30 days overdue. Agent recommends issuing a legal notice.', reviewActions: ['Issue Notice', 'Negotiate', 'Discuss'] },
     ],
     timeAgo: '15 min ago',
     accentColor: 'rgba(234,179,8,0.9)',
@@ -53,12 +63,12 @@ const AGENT_RUN_RESULTS: AgentRunResult[] = [
     agentName: 'KCB Conversational Agent',
     tag: 'Customer',
     tagColor: 'rgba(34,197,94,0.85)',
-    summary: 'Customer sentiment analysis complete — 94% positive',
-    detail: [
-      '128 interactions analysed across web, mobile, and branch channels.',
-      'Top praise: "fast service", "helpful staff", "easy app experience".',
-      'Top complaint: "long wait times at branch" — 6 mentions.',
-      'Recommendation: Increase digital self-service options to reduce branch load.',
+    summary: '128 interactions analysed — 1 strategic decision needed',
+    actions: [
+      { id: 'k1', type: 'auto', text: '128 interactions analysed across web, mobile, and branch — 94% positive sentiment.' },
+      { id: 'k2', type: 'auto', text: 'Top praise themes tagged: "fast service", "helpful staff", "easy app" — report filed.' },
+      { id: 'k3', type: 'auto', text: 'Automated response templates updated based on top FAQ patterns.' },
+      { id: 'k4', type: 'review', text: '"Long wait times at branch" flagged 6× — agent recommends launching digital self-service expansion. Requires your sign-off.', reviewActions: ['Approve Initiative', 'Schedule Review', 'Dismiss'] },
     ],
     timeAgo: '1 hr ago',
     accentColor: 'rgba(34,197,94,0.9)',
@@ -134,11 +144,13 @@ interface Props {
 }
 
 export default function HomeTab({ conversationalAgent, selectedAgent, onSelectAgent, onStartChat, onLogout, userName }: Props) {
+  const { t, tr } = useTheme();
   const [agents, setAgents] = useState<AgentGetResponse[]>([]);
   const [input, setInput] = useState('');
   const [isListening, setIsListening] = useState(false);
   const [transcript, setTranscript] = useState('');
   const [selectedResult, setSelectedResult] = useState<AgentRunResult | null>(null);
+  const [modalFilter, setModalFilter] = useState<'review' | 'auto' | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const speechRef = useRef<any>(null);
 
@@ -164,7 +176,7 @@ export default function HomeTab({ conversationalAgent, selectedAgent, onSelectAg
   }, [conversationalAgent]);
 
   const activeAgent = selectedAgent ?? agents[0] ?? null;
-  const cardAgents = agents.slice(0, 3);
+  const cardAgents = agents.slice(0, 5);
 
   const toggleVoice = useCallback(() => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -190,7 +202,7 @@ export default function HomeTab({ conversationalAgent, selectedAgent, onSelectAg
   /* ── Voice mode ─────────────────────────────────────────────────── */
   if (isListening) {
     return (
-      <div className="flex flex-col h-full" style={{ background: '#000' }}>
+      <div className="flex flex-col h-full" style={{ background: t.bgPrimary }}>
         <div className="flex justify-center pt-16 pb-3">
           <div className="px-5 py-2 rounded-full text-sm font-medium text-white"
             style={{ background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.2)' }}>
@@ -250,7 +262,8 @@ export default function HomeTab({ conversationalAgent, selectedAgent, onSelectAg
 
   /* ── Main home screen ───────────────────────────────────────────── */
   return (
-    <div className="flex flex-col h-full overflow-y-auto relative" style={{ background: '#000' }}>
+    <div className="flex flex-col h-full relative" style={{ background: t.bgPrimary }}>
+    <div className="flex flex-col h-full overflow-y-auto relative" style={{ background: t.bgPrimary }}>
 
 
       {/* Video — pushed down with marginTop */}
@@ -268,9 +281,9 @@ export default function HomeTab({ conversationalAgent, selectedAgent, onSelectAg
       {/* Greeting — tight under video */}
       <div className="flex flex-col items-center relative z-10 flex-shrink-0" style={{ paddingTop: 0, paddingBottom: '2rem' }}>
         <h2 className="text-white font-bold mb-1.5 tracking-tight" style={{ fontSize: 24 }}>
-          Hello, {userName ? userName : 'there'} 👋
+          {tr.greeting}{userName ? `, ${userName}` : ''}
         </h2>
-        <p className="text-sm" style={{ color: 'rgba(175,200,235,0.6)' }}>How can I help you today?</p>
+        <p className="text-sm" style={{ color: 'rgba(175,200,235,0.6)' }}>{tr.howCanIHelp}</p>
       </div>
 
       {/* Input card — single compact row */}
@@ -339,25 +352,114 @@ export default function HomeTab({ conversationalAgent, selectedAgent, onSelectAg
 
 
       {/* Recently Active Agents */}
-      <div className="px-4 pb-5 relative z-10 flex-shrink-0">
-        <p className="text-white font-bold text-sm mb-3">Recently Active Agents</p>
-        <div className="flex gap-3">
-          {(cardAgents.length > 0 ? cardAgents : [null, null, null]).map((agent, i) => {
-            const style = CARD_STYLES[i];
-            const displayName = agent ? getDisplayName(agent) : style.name;
+      <div className="pb-5 relative z-10 flex-shrink-0">
+        <style>{`
+          @keyframes agentScroll {
+            0%   { transform: translateX(0); }
+            100% { transform: translateX(-50%); }
+          }
+        `}</style>
+        <p className="font-bold text-sm mb-3 px-4" style={{ color: t.textPrimary }}>{tr.recentlyActiveAgents}</p>
+        {/* Overflow-hidden mask with fade edges */}
+        <div className="relative overflow-hidden" style={{ paddingLeft: 16 }}>
+          {/* Left/right fade masks */}
+          <div className="absolute left-0 top-0 bottom-0 z-10 pointer-events-none" style={{ width: 16, background: 'linear-gradient(to right, #000, transparent)' }} />
+          <div className="absolute right-0 top-0 bottom-0 z-10 pointer-events-none" style={{ width: 32, background: 'linear-gradient(to left, #000, transparent)' }} />
+          {/* Scrolling track — cards duplicated for seamless loop */}
+          <div className="flex gap-3 pb-1" style={{ animation: 'agentScroll 35s linear infinite', width: 'max-content' }}>
+            {[...(cardAgents.length > 0 ? cardAgents : new Array(5).fill(null)),
+              ...(cardAgents.length > 0 ? cardAgents : new Array(5).fill(null))
+            ].map((agent, i) => {
+              const accents = [
+                { dot: '#00d4aa', border: 'rgba(0,212,170,0.35)' },
+                { dot: '#4facfe', border: 'rgba(79,172,254,0.35)' },
+                { dot: '#c084fc', border: 'rgba(192,132,252,0.35)' },
+                { dot: '#f97316', border: 'rgba(249,115,22,0.35)' },
+                { dot: '#e879f9', border: 'rgba(232,121,249,0.35)' },
+              ];
+              const fallbackNames = ['Claims Adjuster Agent', 'Invoice Insight Agent', 'KCB Digital Agent', 'Supply Chain Agent', 'HR Talent Agent'];
+              const acc = accents[i % accents.length];
+              const displayName = agent ? getDisplayName(agent) : fallbackNames[i % fallbackNames.length];
+              return (
+                <button
+                  key={`${agent?.id ?? i}-${Math.floor(i / (cardAgents.length || 5))}`}
+                  onClick={() => agent && onStartChat(agent)}
+                  className="flex-shrink-0 rounded-2xl overflow-hidden active:scale-95 transition-transform flex flex-col"
+                  style={{ width: 130, background: '#070710', border: `1px solid ${acc.border}` }}
+                >
+                  {/* GIF — top portion */}
+                  <div className="relative overflow-hidden flex-shrink-0" style={{ height: 90 }}>
+                    <img
+                      src="./agent-card.gif"
+                      alt=""
+                      style={{ width: '100%', height: '120%', objectFit: 'cover', objectPosition: 'center top', display: 'block' }}
+                    />
+                    <span className="absolute top-2 left-2.5 w-1.5 h-1.5 rounded-full"
+                      style={{ background: acc.dot, boxShadow: `0 0 5px ${acc.dot}` }} />
+                    <div className="absolute bottom-0 left-0 right-0" style={{ height: 24, background: 'linear-gradient(to bottom, transparent, #070710)' }} />
+                  </div>
+                  {/* Name — below gif, no overlap */}
+                  <div className="px-3 pb-3 pt-1">
+                    <p className="text-white font-bold text-left leading-tight"
+                      style={{ fontSize: 11.5, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                      {displayName}
+                    </p>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      {/* Agent Insights — completed run results */}
+      <div className="px-4 pb-8 relative z-10 flex-shrink-0">
+        <div className="flex items-center justify-between mb-3">
+          <p className="font-bold text-sm" style={{ color: t.textPrimary }}>{tr.agentInsights}</p>
+          <span className="text-xs" style={{ color: t.textSecondary }}>{tr.tapToView}</span>
+        </div>
+        <div className="flex flex-col gap-3">
+          {AGENT_RUN_RESULTS.map((result) => {
+            const autoCount = result.actions.filter(a => a.type === 'auto').length;
+            const reviewCount = result.actions.filter(a => a.type === 'review').length;
             return (
               <button
-                key={agent?.id ?? i}
-                onClick={() => agent && onSelectAgent(agent)}
-                className="flex-1 rounded-xl overflow-hidden relative active:scale-95 transition-transform"
-                style={{ height: 90, background: style.bg }}
+                key={result.id}
+                onClick={() => { setSelectedResult(result); setModalFilter(null); }}
+                className="rounded-2xl px-4 py-3.5 text-left active:scale-95 transition-transform"
+                style={{
+                  background: 'rgba(255,255,255,0.04)',
+                  border: reviewCount > 0 ? '1px solid rgba(251,146,60,0.25)' : '1px solid rgba(74,222,128,0.15)',
+                }}
               >
-                <div className="absolute bottom-0 left-0 right-0 px-2.5 pb-2 pt-8"
-                  style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.92) 0%, rgba(0,0,0,0.3) 60%, transparent 100%)' }}>
-                  <p className="text-white font-semibold text-left leading-snug"
-                    style={{ fontSize: 10.5 }}>
-                    {displayName}
-                  </p>
+                {/* Top row */}
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: result.accentColor }} />
+                    <span className="text-white font-semibold" style={{ fontSize: 12.5 }}>{result.agentName}</span>
+                  </div>
+                  <span style={{ fontSize: 10, color: 'rgba(147,197,253,0.4)' }}>{result.timeAgo}</span>
+                </div>
+                {/* Summary */}
+                <p className="leading-snug mb-2.5" style={{ fontSize: 13, color: 'rgba(215,228,252,0.82)' }}>
+                  {result.summary}
+                </p>
+                {/* Stats row */}
+                <div className="flex items-center gap-2">
+                  <span className="flex items-center gap-1 px-2 py-0.5 rounded-full" style={{ fontSize: 10, background: 'rgba(74,222,128,0.12)', border: '1px solid rgba(74,222,128,0.2)', color: '#4ade80' }}>
+                    <svg width="9" height="9" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7"/></svg>
+                    {autoCount} auto-handled
+                  </span>
+                  {reviewCount > 0 && (
+                    <span className="flex items-center gap-1 px-2 py-0.5 rounded-full font-semibold" style={{ fontSize: 10, background: 'rgba(251,146,60,0.15)', border: '1px solid rgba(251,146,60,0.35)', color: '#fb923c' }}>
+                      <svg width="9" height="9" viewBox="0 0 24 24" fill="#fb923c"><circle cx="12" cy="12" r="10"/><path fill="white" d="M11 7h2v6h-2zm0 8h2v2h-2z"/></svg>
+                      {reviewCount} need{reviewCount === 1 ? 's' : ''} you
+                    </span>
+                  )}
+                  <div className="flex-1" />
+                  <svg style={{ width: 13, height: 13, color: 'rgba(147,197,253,0.4)' }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
                 </div>
               </button>
             );
@@ -365,106 +467,172 @@ export default function HomeTab({ conversationalAgent, selectedAgent, onSelectAg
         </div>
       </div>
 
-      {/* Agent Insights — completed run results */}
-      <div className="px-4 pb-8 relative z-10 flex-shrink-0">
-        <div className="flex items-center justify-between mb-3">
-          <p className="text-white font-bold text-sm">Agent Insights</p>
-          <span className="text-xs" style={{ color: 'rgba(147,197,253,0.5)' }}>Tap to view</span>
-        </div>
-        <div className="flex flex-col gap-3">
-          {AGENT_RUN_RESULTS.map((result) => (
-            <button
-              key={result.id}
-              onClick={() => setSelectedResult(result)}
-              className="rounded-2xl px-4 py-3.5 text-left active:scale-95 transition-transform"
-              style={{
-                background: 'rgba(255,255,255,0.04)',
-                border: '1px solid rgba(255,255,255,0.08)',
-              }}
-            >
-              {/* Top row: agent name + time */}
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-2">
-                  {/* Coloured dot */}
-                  <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: result.accentColor }} />
-                  <span className="text-white font-semibold" style={{ fontSize: 12.5 }}>{result.agentName}</span>
-                </div>
-                <span style={{ fontSize: 10, color: 'rgba(147,197,253,0.4)' }}>{result.timeAgo}</span>
-              </div>
-              {/* Summary */}
-              <p className="leading-snug mb-2.5" style={{ fontSize: 13, color: 'rgba(215,228,252,0.82)' }}>
-                {result.summary}
-              </p>
-              {/* Tag + chevron */}
-              <div className="flex items-center justify-between">
-                <span className="px-2.5 py-0.5 rounded-full text-white font-medium"
-                  style={{ fontSize: 10, background: result.tagColor }}>
-                  {result.tag}
-                </span>
-                <svg style={{ width: 14, height: 14, color: 'rgba(147,197,253,0.4)' }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                </svg>
-              </div>
-            </button>
-          ))}
-        </div>
-      </div>
+    </div>
 
       {/* Result detail modal */}
-      {selectedResult && (
-        <div
-          className="absolute inset-0 z-50 flex flex-col justify-end"
-          style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(6px)' }}
-          onClick={() => setSelectedResult(null)}
-        >
+      {selectedResult && (() => {
+        const reviewItems = selectedResult.actions.filter(a => a.type === 'review');
+        const autoItems = selectedResult.actions.filter(a => a.type === 'auto');
+        const matchedAgent = agents.find(a => a.name.replace(/_/g,' ') === selectedResult.agentName) ?? agents[0] ?? null;
+        return (
           <div
-            className="rounded-t-3xl px-5 pt-5 pb-10 flex flex-col gap-4"
-            style={{ background: '#0e1525', border: '1px solid rgba(255,255,255,0.08)', maxHeight: '75%', overflowY: 'auto' }}
-            onClick={(e) => e.stopPropagation()}
+            className="absolute inset-0 z-50 flex items-center justify-center px-4"
+            style={{ background: 'rgba(0,0,0,0.72)', backdropFilter: 'blur(10px)' }}
+            onClick={() => setSelectedResult(null)}
           >
-            {/* Handle bar */}
-            <div className="w-10 h-1 rounded-full mx-auto mb-1" style={{ background: 'rgba(255,255,255,0.2)' }} />
-
-            {/* Header */}
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0"
-                style={{ background: `radial-gradient(circle at 35% 30%, rgba(255,255,255,0.4) 0%, ${selectedResult.accentColor} 70%)` }}>
-                <svg style={{ width: 16, height: 16, color: 'white' }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M9.75 3.104v5.714a2.25 2.25 0 01-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 014.5 0m0 0v5.714a2.25 2.25 0 001.357 2.059l.614.261a2.25 2.25 0 001.857 0l.614-.261a2.25 2.25 0 001.357-2.059V3.186" />
-                </svg>
-              </div>
-              <div>
-                <p className="text-white font-bold" style={{ fontSize: 15 }}>{selectedResult.agentName}</p>
-                <p style={{ fontSize: 11, color: 'rgba(147,197,253,0.5)' }}>Completed · {selectedResult.timeAgo}</p>
-              </div>
-            </div>
-
-            {/* Summary banner */}
-            <div className="rounded-xl px-4 py-3" style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)' }}>
-              <p className="text-white font-semibold text-sm">{selectedResult.summary}</p>
-            </div>
-
-            {/* Detail items */}
-            <div className="flex flex-col gap-2.5">
-              {selectedResult.detail.map((line, i) => (
-                <div key={i} className="flex gap-3 items-start">
-                  <div className="w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0" style={{ background: selectedResult.accentColor }} />
-                  <p style={{ fontSize: 13, color: 'rgba(215,228,252,0.8)', lineHeight: 1.5 }}>{line}</p>
-                </div>
-              ))}
-            </div>
-
-            {/* Action button */}
-            <button
-              onClick={() => { setSelectedResult(null); if (agents[0]) onStartChat(agents[0]); }}
-              className="w-full py-3.5 rounded-2xl text-white font-semibold text-sm mt-1"
-              style={{ background: 'linear-gradient(135deg,#4facfe 0%,#00c6ff 100%)' }}
+            <div
+              className="w-full rounded-3xl flex flex-col"
+              style={{ background: '#0b1220', border: '1px solid rgba(255,255,255,0.09)', maxHeight: '88%', overflowY: 'auto' }}
+              onClick={(e) => e.stopPropagation()}
             >
-              Discuss with Agent
-            </button>
+              {/* Top spacing */}
+              <div className="pt-2" />
+
+              {/* Header */}
+              <div className="flex items-center justify-between px-5 pt-2 pb-4 flex-shrink-0">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0"
+                    style={{ background: `radial-gradient(circle at 35% 30%, rgba(255,255,255,0.35) 0%, ${selectedResult.accentColor} 70%)` }}>
+                    <svg style={{ width: 16, height: 16, color: 'white' }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M9.75 3.104v5.714a2.25 2.25 0 01-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 014.5 0m0 0v5.714c0 .85.544 1.608 1.357 2.059l.614.261a2.25 2.25 0 001.857 0l.614-.261A2.25 2.25 0 0014.25 8.818V3.186" />
+                    </svg>
+                  </div>
+                  <div>
+                    <p className="text-white font-bold" style={{ fontSize: 15 }}>{selectedResult.agentName}</p>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <span className="w-1.5 h-1.5 rounded-full" style={{ background: '#4ade80' }} />
+                      <p style={{ fontSize: 11, color: 'rgba(147,197,253,0.5)' }}>Completed · {selectedResult.timeAgo}</p>
+                    </div>
+                  </div>
+                </div>
+                <button onClick={() => setSelectedResult(null)}
+                  className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
+                  style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.1)' }}>
+                  <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              {/* Stats bar — tappable filters */}
+              <div className="flex gap-2 px-5 pb-4 flex-shrink-0 items-stretch">
+                <button
+                  className="rounded-xl px-3 py-2.5 flex flex-col items-center justify-center gap-0.5 transition-all active:scale-95"
+                  onClick={() => setModalFilter(null)}
+                  style={{
+                    background: modalFilter === null ? 'rgba(147,197,253,0.15)' : 'rgba(255,255,255,0.05)',
+                    border: modalFilter === null ? '1px solid rgba(147,197,253,0.4)' : '1px solid rgba(255,255,255,0.1)',
+                    minWidth: 40,
+                  }}>
+                  <p className="font-semibold text-xs" style={{ color: modalFilter === null ? 'rgba(147,197,253,0.9)' : 'rgba(147,197,253,0.4)' }}>All</p>
+                </button>
+                <button
+                  className="flex-1 rounded-xl px-3 py-2.5 flex flex-col items-center gap-0.5 transition-all active:scale-95"
+                  onClick={() => setModalFilter(modalFilter === 'auto' ? null : 'auto')}
+                  style={{
+                    background: modalFilter === 'auto' ? 'rgba(74,222,128,0.18)' : 'rgba(74,222,128,0.08)',
+                    border: modalFilter === 'auto' ? '1px solid rgba(74,222,128,0.45)' : '1px solid rgba(74,222,128,0.18)',
+                  }}>
+                  <p className="font-bold text-lg" style={{ color: '#4ade80', lineHeight: 1 }}>{autoItems.length}</p>
+                  <p style={{ fontSize: 10, color: 'rgba(74,222,128,0.65)' }}>Agent handled</p>
+                </button>
+                <button
+                  className="flex-1 rounded-xl px-3 py-2.5 flex flex-col items-center gap-0.5 transition-all active:scale-95"
+                  onClick={() => setModalFilter(modalFilter === 'review' ? null : 'review')}
+                  style={{
+                    background: modalFilter === 'review' ? 'rgba(251,146,60,0.2)' : (reviewItems.length > 0 ? 'rgba(251,146,60,0.1)' : 'rgba(74,222,128,0.08)'),
+                    border: modalFilter === 'review' ? '1px solid rgba(251,146,60,0.55)' : (reviewItems.length > 0 ? '1px solid rgba(251,146,60,0.3)' : '1px solid rgba(74,222,128,0.18)'),
+                  }}>
+                  <p className="font-bold text-lg" style={{ color: reviewItems.length > 0 ? '#fb923c' : '#4ade80', lineHeight: 1 }}>{reviewItems.length}</p>
+                  <p style={{ fontSize: 10, color: reviewItems.length > 0 ? 'rgba(251,146,60,0.65)' : 'rgba(74,222,128,0.65)' }}>Need{reviewItems.length === 1 ? 's' : ''} your input</p>
+                </button>
+              </div>
+
+              <div className="px-5 pb-6 flex flex-col gap-4">
+                {/* ── REQUIRES YOUR INPUT ── */}
+                {reviewItems.length > 0 && (modalFilter === null || modalFilter === 'review') && (
+                  <div>
+                    <div className="flex items-center gap-2 mb-2.5">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="#fb923c"><circle cx="12" cy="12" r="10"/><path fill="white" d="M11 7h2v6h-2zm0 8h2v2h-2z"/></svg>
+                      <p className="text-xs font-semibold tracking-wider" style={{ color: '#fb923c' }}>REQUIRES YOUR INPUT</p>
+                    </div>
+                    <div className="flex flex-col gap-3">
+                      {reviewItems.map((action) => (
+                        <div key={action.id} className="rounded-2xl p-4"
+                          style={{ background: 'rgba(251,146,60,0.07)', border: '1px solid rgba(251,146,60,0.28)' }}>
+                          {/* Ref + amount */}
+                          {(action.ref || action.amount) && (
+                            <div className="flex items-center gap-2 mb-2">
+                              {action.ref && (
+                                <span className="px-2 py-0.5 rounded-md font-mono font-semibold"
+                                  style={{ fontSize: 10, background: 'rgba(251,146,60,0.15)', color: '#fb923c' }}>{action.ref}</span>
+                              )}
+                              {action.amount && (
+                                <span className="font-bold" style={{ fontSize: 13, color: 'white' }}>{action.amount}</span>
+                              )}
+                            </div>
+                          )}
+                          <p style={{ fontSize: 13, color: 'rgba(255,220,180,0.85)', lineHeight: 1.5 }}>{action.text}</p>
+                          {/* Review action buttons */}
+                          {action.reviewActions && (
+                            <div className="flex gap-2 mt-3 flex-wrap">
+                              {action.reviewActions.map((label, i) => (
+                                <button key={label}
+                                  className="px-3 py-1.5 rounded-xl text-xs font-semibold"
+                                  style={i === 0 ? {
+                                    background: 'linear-gradient(135deg,#fb923c,#f97316)', color: 'white',
+                                  } : {
+                                    background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.6)',
+                                  }}>
+                                  {label}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* ── AGENT HANDLED ── */}
+                {(modalFilter === null || modalFilter === 'auto') && <div>
+                  <div className="flex items-center gap-2 mb-2.5">
+                    <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="#4ade80" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7"/></svg>
+                    <p className="text-xs font-semibold tracking-wider" style={{ color: '#4ade80' }}>HANDLED AUTONOMOUSLY</p>
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    {autoItems.map((action) => (
+                      <div key={action.id} className="rounded-xl px-4 py-3 flex gap-3 items-start"
+                        style={{ background: 'rgba(74,222,128,0.05)', border: '1px solid rgba(74,222,128,0.12)' }}>
+                        <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="#4ade80" strokeWidth={2.5} className="flex-shrink-0 mt-0.5"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7"/></svg>
+                        <div className="flex-1 min-w-0">
+                          {(action.ref || action.amount) && (
+                            <div className="flex items-center gap-2 mb-1">
+                              {action.ref && <span className="font-mono text-xs font-semibold" style={{ color: 'rgba(74,222,128,0.7)' }}>{action.ref}</span>}
+                              {action.amount && <span className="text-xs font-semibold" style={{ color: 'rgba(255,255,255,0.5)' }}>{action.amount}</span>}
+                            </div>
+                          )}
+                          <p style={{ fontSize: 12.5, color: 'rgba(185,215,185,0.7)', lineHeight: 1.45 }}>{action.text}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>}
+
+                {/* Discuss button */}
+                <button
+                  onClick={() => { setSelectedResult(null); if (matchedAgent) onStartChat(matchedAgent); }}
+                  className="w-full py-3.5 rounded-2xl text-white font-semibold text-sm"
+                  style={{ background: 'linear-gradient(135deg,#4facfe 0%,#00c6ff 100%)' }}
+                >
+                  Discuss with Agent
+                </button>
+              </div>
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 }

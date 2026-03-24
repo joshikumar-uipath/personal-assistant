@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { ConversationalAgent } from '@uipath/uipath-typescript/conversational-agent';
 import type { AgentGetResponse } from '@uipath/uipath-typescript/conversational-agent';
+import { useTheme } from '../contexts/ThemeContext';
 
 /**
  * Derives a meaningful display name from the agent.
@@ -60,43 +61,22 @@ const CARD_GLOWS = [
   'rgba(30,180,90,0.3)',
 ];
 
+// Agents permanently hidden from all views
+const BLOCKED_PROCESS_KEYS = new Set([
+  'KCB.Conversational.Agent.agent.Agent',
+  'ConversationalAgent_Prj.Agent.HR_ConvAgent',
+  'Solution.53.agent.Agent',
+  'Claims.Adjuster.Agent.agent.Agent',
+]);
+
 interface Props {
   conversationalAgent: ConversationalAgent;
   onSelectAgent: (agent: AgentGetResponse) => void;
 }
 
-function AgentOrb() {
-  return (
-    <div className="relative flex items-center justify-center" style={{ width: 80, height: 80 }}>
-      {/* Ambient glow */}
-      <div className="absolute rounded-full" style={{
-        inset: '-35%',
-        background: 'radial-gradient(circle, rgba(79,152,254,0.28) 0%, transparent 70%)',
-      }} />
-      {/* Glass orb */}
-      <div className="w-full h-full rounded-full relative" style={{
-        background: 'radial-gradient(circle at 38% 30%, rgba(200,230,255,0.92) 0%, rgba(130,185,255,0.82) 16%, rgba(70,140,245,0.84) 40%, rgba(28,88,220,0.92) 68%, rgba(10,42,155,1) 88%, rgba(5,22,80,1) 100%)',
-        boxShadow: '0 0 28px rgba(60,130,240,0.7), 0 0 55px rgba(40,100,220,0.38)',
-      }}>
-        {/* Primary specular highlight */}
-        <div className="absolute" style={{
-          width: '36%', height: '30%', left: '18%', top: '12%',
-          background: 'radial-gradient(ellipse, rgba(255,255,255,0.96) 0%, rgba(240,248,255,0.55) 48%, transparent 100%)',
-          borderRadius: '50%',
-          transform: 'rotate(-22deg)',
-        }} />
-        {/* Secondary rim */}
-        <div className="absolute" style={{
-          width: '15%', height: '12%', right: '20%', top: '20%',
-          background: 'radial-gradient(ellipse, rgba(255,255,255,0.62) 0%, transparent 80%)',
-          borderRadius: '50%',
-        }} />
-      </div>
-    </div>
-  );
-}
 
 export default function ExploreTab({ conversationalAgent, onSelectAgent }: Props) {
+  const { t, tr } = useTheme();
   const [agents, setAgents] = useState<AgentGetResponse[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -108,6 +88,7 @@ export default function ExploreTab({ conversationalAgent, onSelectAgent }: Props
         // Deduplicate by processKey, keeping only the latest by createdTime
         const byKey = new Map<string, AgentGetResponse>();
         for (const agent of all) {
+          if (BLOCKED_PROCESS_KEYS.has(agent.processKey)) continue;
           const existing = byKey.get(agent.processKey);
           if (!existing) { byKey.set(agent.processKey, agent); continue; }
           const existingTime = existing.createdTime ? new Date(existing.createdTime).getTime() : 0;
@@ -121,12 +102,12 @@ export default function ExploreTab({ conversationalAgent, onSelectAgent }: Props
   }, [conversationalAgent]);
 
   return (
-    <div className="flex flex-col h-full" style={{ background: '#06090e' }}>
+    <div className="flex flex-col h-full" style={{ background: t.bgPrimary }}>
       {/* Header */}
       <div className="px-5 pt-14 pb-4 flex-shrink-0">
-        <h1 className="text-white font-bold" style={{ fontSize: 28 }}>Explore</h1>
-        <p className="text-sm mt-0.5" style={{ color: 'rgba(147,197,253,0.55)' }}>
-          {isLoading ? 'Loading agents…' : `${agents.length} AI agent${agents.length !== 1 ? 's' : ''} available`}
+        <h1 className="font-bold" style={{ fontSize: 28, color: t.textPrimary }}>{tr.explore}</h1>
+        <p className="text-sm mt-0.5" style={{ color: t.textSecondary }}>
+          {isLoading ? tr.loadingAgents : tr.agentsAvailable(agents.length)}
         </p>
       </div>
 
@@ -139,7 +120,7 @@ export default function ExploreTab({ conversationalAgent, onSelectAgent }: Props
               boxShadow: '0 0 28px rgba(79,172,254,0.55)',
               animation: 'orb-breathe 2s ease-in-out infinite',
             }} />
-            <p className="text-sm" style={{ color: 'rgba(147,197,253,0.5)' }}>Fetching agents from MEA…</p>
+            <p className="text-sm" style={{ color: t.textSecondary }}>{tr.fetchingAgents}</p>
           </div>
         ) : error ? (
           <div className="rounded-2xl p-4 text-sm" style={{
@@ -151,7 +132,7 @@ export default function ExploreTab({ conversationalAgent, onSelectAgent }: Props
           </div>
         ) : agents.length === 0 ? (
           <div className="flex flex-col items-center justify-center gap-2 h-48">
-            <p className="text-sm" style={{ color: 'rgba(147,197,253,0.5)' }}>No agents found in this tenant.</p>
+            <p className="text-sm" style={{ color: t.textMuted }}>{tr.noAgentsFound}</p>
           </div>
         ) : (
           <div className="grid grid-cols-2 gap-3">
@@ -166,26 +147,31 @@ export default function ExploreTab({ conversationalAgent, onSelectAgent }: Props
                 <button
                   key={agent.id}
                   onClick={() => onSelectAgent(agent)}
-                  className="rounded-2xl overflow-hidden text-left active:scale-95 transition-transform relative"
+                  className="rounded-2xl overflow-hidden text-left active:scale-95 transition-transform flex flex-col"
                   style={{
                     background: gradient,
-                    border: '1px solid rgba(255,255,255,0.07)',
-                    minHeight: 185,
+                    border: '1px solid rgba(255,255,255,0.09)',
                   }}
                 >
-                  {/* Corner glow accent */}
-                  <div className="absolute top-0 right-0 pointer-events-none" style={{
-                    width: '60%', height: '50%',
-                    background: `radial-gradient(ellipse at 85% 10%, ${glow} 0%, transparent 70%)`,
-                  }} />
-
-                  {/* Orb section */}
-                  <div className="flex items-center justify-center pt-5 pb-3 relative z-10">
-                    <AgentOrb />
+                  {/* GIF section */}
+                  <div className="relative overflow-hidden flex-shrink-0" style={{ height: 110 }}>
+                    <img
+                      src="./agent-card.gif"
+                      style={{ width: '100%', height: '120%', objectFit: 'cover', objectPosition: 'center top' }}
+                    />
+                    {/* Status dot */}
+                    <span className="absolute top-2 left-2.5 w-1.5 h-1.5 rounded-full" style={{ background: '#4ade80' }} />
+                    {/* Corner glow */}
+                    <div className="absolute top-0 right-0 pointer-events-none" style={{
+                      width: '60%', height: '60%',
+                      background: `radial-gradient(ellipse at 85% 10%, ${glow} 0%, transparent 70%)`,
+                    }} />
+                    {/* Bottom fade into card bg */}
+                    <div className="absolute bottom-0 left-0 right-0" style={{ height: 28, background: `linear-gradient(to bottom, transparent, ${gradient.match(/#[0-9a-f]{6}/gi)?.[1] ?? '#0c1a42'})` }} />
                   </div>
 
                   {/* Name + status */}
-                  <div className="px-3 pb-4 relative z-10">
+                  <div className="px-3 pb-3 pt-2">
                     <p className="text-white font-bold text-sm leading-snug mb-0.5" style={{
                       display: '-webkit-box',
                       WebkitLineClamp: 2,
@@ -195,13 +181,13 @@ export default function ExploreTab({ conversationalAgent, onSelectAgent }: Props
                       {displayName}
                     </p>
                     {processTag && (
-                      <p className="text-xs mb-1.5 truncate" style={{ color: 'rgba(147,197,253,0.45)', fontSize: 10 }}>
+                      <p className="text-xs truncate" style={{ color: 'rgba(147,197,253,0.45)', fontSize: 10 }}>
                         {processTag}
                       </p>
                     )}
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5 mt-1.5">
                       <div className="w-1.5 h-1.5 rounded-full" style={{ background: '#4ade80' }} />
-                      <span className="text-xs font-medium" style={{ color: '#4ade80' }}>Ready</span>
+                      <span className="text-xs font-medium" style={{ color: '#4ade80' }}>{tr.ready}</span>
                     </div>
                   </div>
                 </button>

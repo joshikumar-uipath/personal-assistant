@@ -1,106 +1,127 @@
 import { useState, useEffect } from 'react';
+import { useTheme } from '../contexts/ThemeContext';
+import type { ConversationalAgent, AgentGetResponse, ConversationGetResponse } from '@uipath/uipath-typescript/conversational-agent';
 
-interface ChatHistoryEntry {
-  id: string;
-  agentName: string;
-  title: string;
-  timestamp: number;
-}
+// Agents permanently hidden (same set as Explore/ChatView)
+const BLOCKED_PROCESS_KEYS = new Set([
+  'KCB.Conversational.Agent.agent.Agent',
+  'ConversationalAgent_Prj.Agent.HR_ConvAgent',
+  'Solution.53.agent.Agent',
+  'Claims.Adjuster.Agent.agent.Agent',
+]);
 
 interface Props {
   onExplore: () => void;
+  conversationalAgent: ConversationalAgent;
+  onOpenChat: (agent: AgentGetResponse, conversationId?: string) => void;
 }
 
-// Demo entries shown when history is empty
-const DEMO_ENTRIES: ChatHistoryEntry[] = [
-  { id: 'd1', agentName: 'Claims Adjuster Agent', title: 'Futuristic portrait exploration',           timestamp: new Date('2025-12-07T15:00:00').getTime() },
-  { id: 'd2', agentName: 'Claims Adjuster Agent', title: 'Voice to text preview for Bubly',           timestamp: new Date('2025-12-07T11:00:00').getTime() },
-  { id: 'd3', agentName: 'Invoice Insight Agent',  title: 'Smooth UI bubble conversation draft',      timestamp: new Date('2025-12-07T09:00:00').getTime() },
-  { id: 'd4', agentName: 'KCB Agent',              title: 'Natural english caption for Dribbble',     timestamp: new Date('2025-12-05T14:00:00').getTime() },
-  { id: 'd5', agentName: 'Invoice Insight Agent',  title: 'Light adjustment note for UI concept',     timestamp: new Date('2025-12-05T10:00:00').getTime() },
-  { id: 'd6', agentName: 'Claims Adjuster Agent',  title: 'Gamification flow ideas',                  timestamp: new Date('2025-12-04T16:00:00').getTime() },
-  { id: 'd7', agentName: 'KCB Agent',              title: 'Education brochure tone setup',             timestamp: new Date('2025-12-03T13:00:00').getTime() },
-  { id: 'd8', agentName: 'Invoice Insight Agent',  title: '3D Orb texture prompt',                    timestamp: new Date('2025-12-03T08:00:00').getTime() },
-];
-
-function getHistory(): ChatHistoryEntry[] {
-  try {
-    return JSON.parse(localStorage.getItem('pa_chat_history') || '[]');
-  } catch {
-    return [];
-  }
-}
-
-function formatDateLabel(ts: number): string {
+function formatDateLabel(ts: string): string {
   const d = new Date(ts);
+  const today = new Date();
+  const yesterday = new Date(today);
+  yesterday.setDate(today.getDate() - 1);
+  const sameDay = (a: Date, b: Date) => a.toDateString() === b.toDateString();
+  if (sameDay(d, today)) return 'TODAY';
+  if (sameDay(d, yesterday)) return 'YESTERDAY';
   return d.toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }).toUpperCase();
 }
 
-export default function ChatHistoryTab({ onExplore }: Props) {
-  const [history, setHistory] = useState<ChatHistoryEntry[]>([]);
+function formatTime(ts: string): string {
+  return new Date(ts).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+}
+
+export default function ChatHistoryTab({ onExplore, conversationalAgent, onOpenChat }: Props) {
+  const { t, tr } = useTheme();
+  const [conversations, setConversations] = useState<ConversationGetResponse[]>([]);
+  const [agentMap, setAgentMap] = useState<Map<number, AgentGetResponse>>(new Map());
+  const [isLoading, setIsLoading] = useState(true);
   const [search, setSearch] = useState('');
 
   useEffect(() => {
-    const stored = getHistory();
-    setHistory(stored.length > 0 ? [...stored].reverse() : DEMO_ENTRIES);
-  }, []);
+    Promise.all([
+      conversationalAgent.getAll(),
+      conversationalAgent.conversations.getAll(),
+    ]).then(([allAgents, convsResult]) => {
+      // Build agent map (id → agent), filtering blocked agents
+      const map = new Map<number, AgentGetResponse>();
+      for (const agent of allAgents) {
+        if (!BLOCKED_PROCESS_KEYS.has(agent.processKey)) {
+          map.set(agent.id, agent);
+        }
+      }
+      setAgentMap(map);
+
+      // Sort newest first, then deduplicate: one conversation per (agentId, day)
+      const sorted = convsResult.items
+        .filter((c) => c.agentId != null && map.has(c.agentId))
+        .sort((a, b) => new Date(b.lastActivityTime).getTime() - new Date(a.lastActivityTime).getTime());
+
+      const seen = new Set<string>();
+      const deduped = sorted.filter((c) => {
+        const day = new Date(c.lastActivityTime).toDateString();
+        const key = `${c.agentId}__${day}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+
+      setConversations(deduped);
+    }).catch(() => {}).finally(() => setIsLoading(false));
+  }, [conversationalAgent]);
 
   const filtered = search
-    ? history.filter(h =>
-        h.title.toLowerCase().includes(search.toLowerCase()) ||
-        h.agentName.toLowerCase().includes(search.toLowerCase())
-      )
-    : history;
+    ? conversations.filter((c) => {
+        const agent = c.agentId != null ? agentMap.get(c.agentId) : undefined;
+        const agentName = agent?.name.replace(/_/g, ' ') ?? '';
+        return (
+          c.label.toLowerCase().includes(search.toLowerCase()) ||
+          agentName.toLowerCase().includes(search.toLowerCase())
+        );
+      })
+    : conversations;
 
   // Group by date label
-  const groups: { label: string; items: ChatHistoryEntry[] }[] = [];
-  filtered.forEach((entry) => {
-    const label = formatDateLabel(entry.timestamp);
+  const groups: { label: string; items: ConversationGetResponse[] }[] = [];
+  filtered.forEach((conv) => {
+    const label = formatDateLabel(conv.lastActivityTime);
     const last = groups[groups.length - 1];
-    if (last && last.label === label) last.items.push(entry);
-    else groups.push({ label, items: [entry] });
+    if (last && last.label === label) last.items.push(conv);
+    else groups.push({ label, items: [conv] });
   });
 
   return (
-    <div className="flex flex-col h-full" style={{ background: '#07090f' }}>
+    <div className="flex flex-col h-full" style={{ background: t.bgPrimary }}>
 
       {/* Subtle centre glow */}
       <div className="absolute inset-0 pointer-events-none" style={{
-        background: 'radial-gradient(ellipse 70% 40% at 50% 38%, rgba(20,90,140,0.22) 0%, transparent 70%)',
+        background: 'radial-gradient(ellipse 70% 40% at 50% 38%, rgba(20,90,140,0.18) 0%, transparent 70%)',
       }} />
 
       {/* Header */}
       <div className="px-5 pt-14 pb-5 flex-shrink-0 relative z-10">
-        <h1 className="text-white font-bold mb-5" style={{ fontSize: 22 }}>Your conversation</h1>
+        <h1 className="font-bold mb-5" style={{ fontSize: 22, color: t.textPrimary }}>{tr.yourConversation}</h1>
 
         {/* Search + new button */}
         <div className="flex items-center gap-3">
           <div className="flex-1 flex items-center gap-2.5 px-4 rounded-full"
-            style={{
-              height: 48,
-              background: 'rgba(255,255,255,0.05)',
-              border: '1px solid rgba(255,255,255,0.12)',
-            }}>
-            <svg style={{ width: 16, height: 16, flexShrink: 0, color: 'rgba(147,197,253,0.5)' }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            style={{ height: 48, background: t.bgInput, border: `1px solid ${t.borderStrong}` }}>
+            <svg style={{ width: 16, height: 16, flexShrink: 0, color: t.textSecondary }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
             </svg>
             <input
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search..."
+              placeholder={tr.searchPlaceholder}
               className="flex-1 bg-transparent outline-none text-sm"
-              style={{ color: 'rgba(255,255,255,0.75)' }}
+              style={{ color: t.textBody }}
             />
           </div>
           <button
             onClick={onExplore}
             className="flex items-center justify-center rounded-full flex-shrink-0"
-            style={{
-              width: 48, height: 48,
-              background: 'linear-gradient(135deg,#4facfe 0%,#00c6ff 100%)',
-              boxShadow: '0 0 20px rgba(79,172,254,0.4)',
-            }}>
+            style={{ width: 48, height: 48, background: 'linear-gradient(135deg,#4facfe 0%,#00c6ff 100%)', boxShadow: '0 0 20px rgba(79,172,254,0.4)' }}>
             <svg style={{ width: 20, height: 20 }} className="text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
             </svg>
@@ -110,30 +131,65 @@ export default function ChatHistoryTab({ onExplore }: Props) {
 
       {/* Conversation list */}
       <div className="flex-1 overflow-y-auto px-5 pb-8 relative z-10">
-        {groups.length === 0 ? (
+        {isLoading ? (
+          <div className="flex flex-col items-center justify-center h-48 gap-3">
+            <div className="w-8 h-8 rounded-full" style={{
+              background: 'radial-gradient(circle at 35% 25%,rgba(200,235,255,0.92) 0%,rgba(70,140,230,0.9) 50%,rgba(10,40,120,1) 100%)',
+              boxShadow: '0 0 20px rgba(79,172,254,0.5)',
+              animation: 'orb-breathe 2s ease-in-out infinite',
+            }} />
+            <p className="text-sm" style={{ color: t.textSecondary }}>Loading conversations...</p>
+          </div>
+        ) : groups.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-48 text-center gap-2">
-            <p className="font-medium text-sm" style={{ color: 'rgba(255,255,255,0.4)' }}>No conversations yet</p>
-            <p className="text-xs" style={{ color: 'rgba(255,255,255,0.22)' }}>Start chatting from Home or Explore</p>
+            <p className="font-medium text-sm" style={{ color: t.textMuted }}>{tr.noConversations}</p>
+            <p className="text-xs" style={{ color: t.textMuted }}>{tr.startChatting}</p>
           </div>
         ) : (
           <div className="flex flex-col gap-5">
             {groups.map((group) => (
               <div key={group.label}>
-                {/* Date label */}
-                <p className="text-xs font-semibold tracking-widest mb-2.5" style={{ color: 'rgba(147,197,253,0.38)' }}>
-                  {group.label}
+                <p className="text-xs font-semibold tracking-widest mb-2.5" style={{ color: t.textLabel }}>
+                  {group.label === 'TODAY' ? tr.today : group.label === 'YESTERDAY' ? tr.yesterday : group.label}
                 </p>
-                {/* All items in one rounded card, divided by hairlines */}
-                <div className="rounded-2xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)' }}>
-                  {group.items.map((entry, idx) => (
-                    <button
-                      key={entry.id}
-                      className="w-full flex items-center px-4 py-3.5 text-left active:bg-white/10 transition-colors"
-                      style={idx < group.items.length - 1 ? { borderBottom: '1px solid rgba(255,255,255,0.07)' } : {}}
-                    >
-                      <p className="text-white text-sm font-medium truncate">{entry.title}</p>
-                    </button>
-                  ))}
+                <div className="rounded-2xl overflow-hidden" style={{ background: t.bgCard, border: `1px solid ${t.border}` }}>
+                  {group.items.map((conv, idx) => {
+                    const agent = conv.agentId != null ? agentMap.get(conv.agentId) : undefined;
+                    const agentName = agent?.name.replace(/_/g, ' ') ?? 'Unknown Agent';
+                    return (
+                      <button
+                        key={conv.id}
+                        onClick={() => agent && onOpenChat(agent, conv.id)}
+                        className="w-full flex items-center gap-3 px-4 py-3.5 text-left transition-colors active:opacity-70"
+                        style={{
+                          ...(idx < group.items.length - 1 ? { borderBottom: `1px solid ${t.divider}` } : {}),
+                          opacity: agent ? 1 : 0.4,
+                        }}
+                      >
+                        {/* Icon */}
+                        <div className="flex items-center justify-center rounded-full flex-shrink-0"
+                          style={{ width: 34, height: 34, background: 'rgba(79,172,254,0.12)', border: '1px solid rgba(79,172,254,0.2)' }}>
+                          <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="rgba(147,197,253,0.8)" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+                          </svg>
+                        </div>
+
+                        {/* Text */}
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate" style={{ color: t.textPrimary }}>{conv.label}</p>
+                          <div className="flex items-center gap-1.5 mt-0.5">
+                            <p className="text-xs truncate" style={{ color: t.textSecondary }}>{agentName}</p>
+                            <span style={{ color: t.textMuted, fontSize: 10 }}>·</span>
+                            <p className="text-xs flex-shrink-0" style={{ color: t.textMuted }}>{formatTime(conv.lastActivityTime)}</p>
+                          </div>
+                        </div>
+
+                        <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke={t.chevron} strokeWidth={2} className="flex-shrink-0">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                        </svg>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             ))}

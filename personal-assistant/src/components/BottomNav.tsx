@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTheme } from '../contexts/ThemeContext';
 
 export type Tab = 'home' | 'chat' | 'explore' | 'alerts' | 'profile';
 
@@ -48,21 +49,26 @@ function ProfileIcon() {
   );
 }
 
-const TABS: { id: Tab; label: string; Icon: () => React.ReactElement; badge?: number }[] = [
-  { id: 'home',    label: 'Home',    Icon: HomeIcon },
-  { id: 'chat',    label: 'Chat',    Icon: ChatIcon },
-  { id: 'explore', label: 'Explore', Icon: ExploreIcon },
-  { id: 'alerts',  label: 'Alerts',  Icon: BellIcon, badge: 1 },
-  { id: 'profile', label: 'Profile', Icon: ProfileIcon },
-];
+function useTabs() {
+  const { tr } = useTheme();
+  return [
+    { id: 'home'    as Tab, label: tr.navHome,    Icon: HomeIcon },
+    { id: 'chat'    as Tab, label: tr.navChat,    Icon: ChatIcon },
+    { id: 'explore' as Tab, label: tr.navExplore, Icon: ExploreIcon },
+    { id: 'alerts'  as Tab, label: tr.navAlerts,  Icon: BellIcon, badge: 1 },
+    { id: 'profile' as Tab, label: tr.navProfile, Icon: ProfileIcon },
+  ];
+}
 
 export default function BottomNav({ activeTab, onTabChange }: Props) {
+  const { t, tr } = useTheme();
+  const TABS = useTabs();
   return (
     <div
       className="flex-shrink-0 flex items-center justify-around px-6"
       style={{
-        background: 'rgba(6,9,15,0.97)',
-        borderTop: '1px solid rgba(255,255,255,0.06)',
+        background: t.navBg,
+        borderTop: `1px solid ${t.navBorder}`,
         backdropFilter: 'blur(20px)',
         paddingBottom: 'max(env(safe-area-inset-bottom),14px)',
         paddingTop: '10px',
@@ -76,28 +82,27 @@ export default function BottomNav({ activeTab, onTabChange }: Props) {
             onClick={() => onTabChange(id)}
             className="flex flex-col items-center gap-1.5 flex-1"
           >
-            {/* Icon — filled blue pill when active, plain when not */}
             <div className="relative">
               <div
                 className="flex items-center justify-center rounded-2xl transition-all"
                 style={
                   active
                     ? { width: 58, height: 34, background: 'rgba(88,148,218,0.92)', boxShadow: '0 2px 16px rgba(88,148,218,0.4)', color: 'white' }
-                    : { width: 58, height: 34, color: 'rgba(255,255,255,0.38)' }
+                    : { width: 58, height: 34, color: t.navInactive }
                 }
               >
                 <Icon />
               </div>
               {badge && !active && (
                 <div className="absolute -top-0.5 right-2 w-3.5 h-3.5 rounded-full flex items-center justify-center"
-                  style={{ background: '#ef4444', border: '2px solid rgba(6,9,15,0.97)' }}>
+                  style={{ background: '#ef4444', border: `2px solid ${t.navBg}` }}>
                   <span style={{ fontSize: 7, color: 'white', fontWeight: 700 }}>{badge}</span>
                 </div>
               )}
             </div>
             <span
               className="text-xs font-medium"
-              style={{ color: active ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.35)' }}
+              style={{ color: active ? t.navLabelActive : t.navLabelInactive }}
             >
               {label}
             </span>

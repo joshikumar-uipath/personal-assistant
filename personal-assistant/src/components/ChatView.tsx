@@ -1,4 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import ReactMarkdown from 'react-markdown';
+import { useTheme } from '../contexts/ThemeContext';
+import { CHIP_TRANSLATIONS } from '../i18n/translations';
 import { ConversationalAgent, MessageRole } from '@uipath/uipath-typescript/conversational-agent';
 import type {
   AgentGetResponse,
@@ -22,6 +25,7 @@ interface Props {
   conversationalAgent: ConversationalAgent;
   onBack: () => void;
   onSwitchAgent: (agent: AgentGetResponse) => void;
+  conversationId?: string;
 }
 
 const GENERIC = ['agent', 'assistant', 'bot', 'ai'];
@@ -36,15 +40,46 @@ function getDisplayName(a: AgentGetResponse): string {
   return (first === last ? first : `${first} · ${last}`).replace(/_/g, ' ');
 }
 
-// Empty-state chips (2-column grid, matches Screen 2 from design)
-const EMPTY_CHIPS = [
-  { label: 'image edit',       icon: <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg> },
-  { label: 'Generate prompt',  icon: <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg> },
-  { label: 'Deep research',    icon: <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg> },
-  { label: 'Rewrite',          icon: <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg> },
-  { label: 'Translate',        icon: <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><circle cx="12" cy="12" r="9"/><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3.6 9h16.8M3.6 15h16.8M12 3a15 15 0 010 18M12 3a15 15 0 000 18" /></svg> },
-  { label: 'Homework',         icon: <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" /></svg> },
-];
+type Chip = { label: string; icon: React.ReactNode };
+
+const CHIP_ICONS = {
+  search:   <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>,
+  list:     <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>,
+  alert:    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>,
+  chart:    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>,
+  person:   <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>,
+  money:    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>,
+  box:      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" /></svg>,
+  chat:     <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" /></svg>,
+  doc:      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>,
+};
+
+const CATEGORY_ICONS: Record<string, React.ReactNode[]> = {
+  default:  [CHIP_ICONS.chat,  CHIP_ICONS.list,  CHIP_ICONS.doc,    CHIP_ICONS.search, CHIP_ICONS.chart,  CHIP_ICONS.alert],
+  invoice:  [CHIP_ICONS.list,  CHIP_ICONS.alert, CHIP_ICONS.chart,  CHIP_ICONS.search, CHIP_ICONS.money,  CHIP_ICONS.alert],
+  claim:    [CHIP_ICONS.list,  CHIP_ICONS.alert, CHIP_ICONS.chart,  CHIP_ICONS.search, CHIP_ICONS.doc,    CHIP_ICONS.alert],
+  hr:       [CHIP_ICONS.list,  CHIP_ICONS.person,CHIP_ICONS.doc,    CHIP_ICONS.chart,  CHIP_ICONS.search, CHIP_ICONS.list],
+  supply:   [CHIP_ICONS.alert, CHIP_ICONS.box,   CHIP_ICONS.search, CHIP_ICONS.chart,  CHIP_ICONS.alert,  CHIP_ICONS.list],
+  kcb:      [CHIP_ICONS.list,  CHIP_ICONS.alert, CHIP_ICONS.chat,   CHIP_ICONS.money,  CHIP_ICONS.search, CHIP_ICONS.person],
+  customer: [CHIP_ICONS.list,  CHIP_ICONS.alert, CHIP_ICONS.chart,  CHIP_ICONS.search, CHIP_ICONS.doc,    CHIP_ICONS.chat],
+};
+
+function buildChips(lang: string, category: string): Chip[] {
+  const labels = (CHIP_TRANSLATIONS[lang] ?? CHIP_TRANSLATIONS['en'])[category as keyof typeof CHIP_TRANSLATIONS['en']];
+  const icons = CATEGORY_ICONS[category];
+  return labels.map((label, i) => ({ label, icon: icons[i] }));
+}
+
+function getAgentChips(agent: AgentGetResponse, lang: string): Chip[] {
+  const key = (agent.name + ' ' + (agent.processKey ?? '')).toLowerCase();
+  if (key.includes('invoice') || key.includes('finance') || key.includes('payment')) return buildChips(lang, 'invoice');
+  if (key.includes('claim') || key.includes('adjuster') || key.includes('insurance')) return buildChips(lang, 'claim');
+  if (key.includes('hr') || key.includes('talent') || key.includes('recruit') || key.includes('onboard')) return buildChips(lang, 'hr');
+  if (key.includes('supply') || key.includes('inventory') || key.includes('warehouse') || key.includes('logistics')) return buildChips(lang, 'supply');
+  if (key.includes('kcb') || key.includes('bank') || key.includes('loan') || key.includes('transaction')) return buildChips(lang, 'kcb');
+  if (key.includes('customer') || key.includes('support') || key.includes('ticket') || key.includes('service')) return buildChips(lang, 'customer');
+  return buildChips(lang, 'default');
+}
 
 function MiniOrb({ size = 28 }: { size?: number }) {
   return (
@@ -57,7 +92,8 @@ function MiniOrb({ size = 28 }: { size?: number }) {
   );
 }
 
-export default function ChatView({ agent, conversationalAgent, onBack, onSwitchAgent }: Props) {
+export default function ChatView({ agent, conversationalAgent, onBack, onSwitchAgent, conversationId: existingConversationId }: Props) {
+  const { t, tr, lang } = useTheme();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
@@ -68,11 +104,20 @@ export default function ChatView({ agent, conversationalAgent, onBack, onSwitchA
   const [showDropdown, setShowDropdown] = useState(false);
   const [allAgents, setAllAgents] = useState<AgentGetResponse[]>([]);
 
+  // Agents permanently hidden from all views
+  const BLOCKED_PROCESS_KEYS = new Set([
+    'KCB.Conversational.Agent.agent.Agent',
+    'ConversationalAgent_Prj.Agent.HR_ConvAgent',
+    'Solution.53.agent.Agent',
+    'Claims.Adjuster.Agent.agent.Agent',
+  ]);
+
   // Fetch & deduplicate agents for the switcher
   useEffect(() => {
     conversationalAgent.getAll().then((all) => {
       const byKey = new Map<string, AgentGetResponse>();
       for (const a of all) {
+        if (BLOCKED_PROCESS_KEYS.has(a.processKey)) continue;
         const existing = byKey.get(a.processKey);
         if (!existing) { byKey.set(a.processKey, a); continue; }
         const t1 = existing.createdTime ? new Date(existing.createdTime).getTime() : 0;
@@ -81,11 +126,14 @@ export default function ChatView({ agent, conversationalAgent, onBack, onSwitchA
       }
       setAllAgents(Array.from(byKey.values()));
     }).catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversationalAgent]);
 
   const convRef = useRef<ConversationGetResponse | null>(null);
   const sessionRef = useRef<SessionStream | null>(null);
   const exchangeAssistantIdRef = useRef<Map<string, string>>(new Map());
+  const exchangeTimeoutRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  const hasSavedHistoryRef = useRef(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const speechRef = useRef<any>(null);
@@ -98,17 +146,92 @@ export default function ChatView({ agent, conversationalAgent, onBack, onSwitchA
     let mounted = true;
     const setup = async () => {
       try {
-        const conv = await agent.conversations.create({ label: `Chat with ${agent.name}` });
+        const agentName = agent.name.replace(/_/g, ' ');
+
+        // Either resume an existing conversation or create a new one
+        let conv: ConversationGetResponse;
+        if (existingConversationId) {
+          conv = await conversationalAgent.conversations.getById(existingConversationId);
+        } else {
+          conv = await agent.conversations.create({ label: `Chat with ${agentName}` });
+        }
         if (!mounted) return;
-        try {
-          const history = JSON.parse(localStorage.getItem('pa_chat_history') || '[]');
-          history.push({ id: `chat-${Date.now()}`, agentId: agent.id, agentName: agent.name.replace(/_/g, ' '), title: `Chat with ${agent.name.replace(/_/g, ' ')}`, timestamp: Date.now() });
-          localStorage.setItem('pa_chat_history', JSON.stringify(history.slice(-50)));
-        } catch { /* ignore */ }
+
+        // Load existing message history from exchanges
+        if (existingConversationId) {
+          try {
+            const exchangesResult = await conv.exchanges.getAll();
+            const loaded: ChatMessage[] = [];
+            for (const exchange of exchangesResult.items) {
+              for (const message of exchange.messages) {
+                const parts = message.contentParts ?? [];
+                let content = '';
+                for (const part of parts) {
+                  try {
+                    const data = await part.getData();
+                    if (typeof data === 'string') {
+                      content += data;
+                    } else {
+                      content += await (data as Response).text();
+                    }
+                  } catch { /* skip unreadable part */ }
+                }
+                if (content.trim()) {
+                  loaded.push({
+                    id: message.id,
+                    role: message.role === MessageRole.User ? 'user' : 'assistant',
+                    content,
+                  });
+                }
+              }
+            }
+            if (mounted && loaded.length > 0) setMessages(loaded);
+          } catch { /* ignore history load errors */ }
+        }
 
         convRef.current = conv;
         const session = conv.startSession({ echo: true });
         sessionRef.current = session;
+
+        const agentNameForHistory = agent.name.replace(/_/g, ' ');
+        const clearExchange = (exchangeId: string, assistantId: string, errorMsg?: string) => {
+          clearTimeout(exchangeTimeoutRef.current.get(exchangeId));
+          exchangeTimeoutRef.current.delete(exchangeId);
+          exchangeAssistantIdRef.current.delete(exchangeId);
+          setMessages((prev) => prev.map((m) =>
+            m.id === assistantId
+              ? { ...m, isStreaming: false, ...(errorMsg && !m.content ? { content: errorMsg } : {}) }
+              : m
+          ));
+          setIsStreaming(false);
+          // Save to history only on first successful exchange (no error, has a conv ID)
+          if (!errorMsg && !hasSavedHistoryRef.current && convRef.current && !existingConversationId) {
+            hasSavedHistoryRef.current = true;
+            try {
+              const history = JSON.parse(localStorage.getItem('pa_chat_history') || '[]');
+              const todayStr = new Date().toDateString();
+              const existingIdx = history.findIndex(
+                (h: { agentName: string; timestamp: number }) =>
+                  h.agentName === agentNameForHistory && new Date(h.timestamp).toDateString() === todayStr
+              );
+              if (existingIdx >= 0) {
+                history[existingIdx].timestamp = Date.now();
+                history[existingIdx].conversationId = convRef.current.id;
+              } else {
+                history.push({ id: `chat-${Date.now()}`, agentId: String(agent.id), agentName: agentNameForHistory, title: `Chat with ${agentNameForHistory}`, timestamp: Date.now(), conversationId: convRef.current.id });
+              }
+              localStorage.setItem('pa_chat_history', JSON.stringify(history.slice(-50)));
+            } catch { /* ignore */ }
+          }
+        };
+
+        session.onAnyErrorStart((err) => {
+          const errMsg = err.message || 'The agent encountered an error. Please try again.';
+          exchangeAssistantIdRef.current.forEach((assistantId, exchangeId) => {
+            clearExchange(exchangeId, assistantId, errMsg);
+          });
+          setError(errMsg);
+        });
 
         session.onExchangeStart((exchange) => {
           const assistantId = exchangeAssistantIdRef.current.get(exchange.exchangeId);
@@ -126,21 +249,19 @@ export default function ChatView({ agent, conversationalAgent, onBack, onSwitchA
               }
             });
           });
-          exchange.onExchangeEnd(() => {
-            exchangeAssistantIdRef.current.delete(exchange.exchangeId);
-            setMessages((prev) => prev.map((m) => m.id === assistantId ? { ...m, isStreaming: false } : m));
-            setIsStreaming(false);
-          });
+          exchange.onExchangeEnd(() => clearExchange(exchange.exchangeId, assistantId));
+          exchange.onErrorStart((err) => clearExchange(exchange.exchangeId, assistantId, err.message || 'Agent error'));
         });
 
         if (mounted) setIsInitializing(false);
       } catch {
-        if (mounted) { setError('Failed to connect. Please go back and try again.'); setIsInitializing(false); }
+        if (mounted) { setError(tr.failedToConnect); setIsInitializing(false); }
       }
     };
     setup();
     return () => { mounted = false; convRef.current?.endSession(); };
-  }, [agent]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [agent, existingConversationId]);
 
   const sendMessage = useCallback(async (textOverride?: string) => {
     const text = (textOverride ?? input).trim();
@@ -156,6 +277,17 @@ export default function ChatView({ agent, conversationalAgent, onBack, onSwitchA
 
     const exchangeId = `exchange-${Date.now()}-${crypto.randomUUID().slice(0, 12)}`;
     exchangeAssistantIdRef.current.set(exchangeId, assistantId);
+
+    const timeout = setTimeout(() => {
+      if (!exchangeAssistantIdRef.current.has(exchangeId)) return;
+      exchangeTimeoutRef.current.delete(exchangeId);
+      exchangeAssistantIdRef.current.delete(exchangeId);
+      setMessages((prev) => prev.map((m) =>
+        m.id === assistantId ? { ...m, isStreaming: false, content: 'Agent is not responding. Please try again.' } : m
+      ));
+      setIsStreaming(false);
+    }, 40000);
+    exchangeTimeoutRef.current.set(exchangeId, timeout);
 
     const exchange = sessionRef.current.startExchange({ exchangeId });
     const message = exchange.startMessage({ role: MessageRole.User });
@@ -247,17 +379,17 @@ export default function ChatView({ agent, conversationalAgent, onBack, onSwitchA
   /* ── Chat screen ────────────────────────────────────────────────── */
   return (
     <div className="flex flex-col h-full"
-      style={{ background: 'linear-gradient(160deg,#070b18 0%,#0d1526 55%,#070b18 100%)' }}>
+      style={{ background: t.bgPage }}>
 
       {/* Header — back | centered title dropdown | menu */}
-      <div className="flex-shrink-0 relative" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+      <div className="flex-shrink-0 relative" style={{ borderBottom: `1px solid ${t.headerBorder}` }}>
         <div className="flex items-center px-4 pt-14 pb-3">
           <button
             onClick={onBack}
             className="w-9 h-9 flex items-center justify-center rounded-full flex-shrink-0"
-            style={{ background: 'rgba(255,255,255,0.07)' }}
+            style={{ background: t.backBtnBg }}
           >
-            <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <svg className="w-5 h-5" style={{ color: t.backBtnIcon }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
             </svg>
           </button>
@@ -268,10 +400,10 @@ export default function ChatView({ agent, conversationalAgent, onBack, onSwitchA
               onClick={() => setShowDropdown(v => !v)}
               className="flex items-center gap-1"
             >
-              <span className="text-white font-semibold text-sm">{getDisplayName(agent)}</span>
+              <span className="font-semibold text-sm" style={{ color: t.headerName }}>{getDisplayName(agent)}</span>
               <svg
                 className="w-3.5 h-3.5 transition-transform"
-                style={{ color: 'rgba(255,255,255,0.4)', transform: showDropdown ? 'rotate(180deg)' : 'rotate(0deg)' }}
+                style={{ color: t.headerChevron, transform: showDropdown ? 'rotate(180deg)' : 'rotate(0deg)' }}
                 fill="none" viewBox="0 0 24 24" stroke="currentColor"
               >
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
@@ -293,9 +425,9 @@ export default function ChatView({ agent, conversationalAgent, onBack, onSwitchA
             style={{
               top: '100%',
               marginTop: 4,
-              background: 'rgba(15,22,40,0.97)',
-              border: '1px solid rgba(255,255,255,0.12)',
-              boxShadow: '0 12px 40px rgba(0,0,0,0.6)',
+              background: t.dropdownBg,
+              border: `1px solid ${t.borderStrong}`,
+              boxShadow: '0 12px 40px rgba(0,0,0,0.35)',
               backdropFilter: 'blur(16px)',
             }}
           >
@@ -310,9 +442,9 @@ export default function ChatView({ agent, conversationalAgent, onBack, onSwitchA
                 }}
               >
                 <div className="flex-1 min-w-0">
-                  <p className="text-white text-sm font-medium truncate">{getDisplayName(a)}</p>
+                  <p className="text-sm font-medium truncate" style={{ color: t.textPrimary }}>{getDisplayName(a)}</p>
                   {a.processKey && (
-                    <p className="text-xs truncate" style={{ color: 'rgba(147,197,253,0.45)' }}>{a.processKey}</p>
+                    <p className="text-xs truncate" style={{ color: t.textSecondary }}>{a.processKey}</p>
                   )}
                 </div>
                 {a.id === agent.id && (
@@ -347,7 +479,7 @@ export default function ChatView({ agent, conversationalAgent, onBack, onSwitchA
             </p>
             {/* 2-column chip grid */}
             <div className="grid grid-cols-2 gap-2 w-full">
-              {EMPTY_CHIPS.map((chip) => (
+              {getAgentChips(agent, lang).map((chip) => (
                 <button
                   key={chip.label}
                   onClick={() => sendMessage(chip.label)}
@@ -375,16 +507,8 @@ export default function ChatView({ agent, conversationalAgent, onBack, onSwitchA
                 className={`max-w-[78%] px-4 py-3 rounded-2xl text-sm leading-relaxed ${msg.role === 'user' ? 'rounded-br-sm' : 'rounded-bl-sm'}`}
                 style={
                   msg.role === 'user'
-                    ? {
-                        background: 'rgba(255,255,255,0.09)',
-                        border: '1px solid rgba(255,255,255,0.14)',
-                        color: 'rgba(255,255,255,0.92)',
-                      }
-                    : {
-                        background: 'rgba(255,255,255,0.07)',
-                        border: '1px solid rgba(255,255,255,0.08)',
-                        color: 'rgba(255,255,255,0.9)',
-                      }
+                    ? { background: 'linear-gradient(135deg,#4facfe 0%,#00c6ff 100%)', color: '#fff' }
+                    : { background: t.aiBubbleBg, border: `1px solid ${t.aiBubbleBorder}`, color: t.aiBubbleText }
                 }
               >
                 {msg.isStreaming && !msg.content ? (
@@ -394,8 +518,42 @@ export default function ChatView({ agent, conversationalAgent, onBack, onSwitchA
                         style={{ background: 'rgba(255,255,255,0.4)', animationDelay: `${delay}ms` }} />
                     ))}
                   </div>
-                ) : (
+                ) : msg.role === 'user' ? (
                   <p className="whitespace-pre-wrap">{msg.content}</p>
+                ) : (
+                  <div className="markdown-body">
+                    <ReactMarkdown
+                      components={{
+                        h1: ({ children }) => <p className="font-bold text-base mb-1 text-white">{children}</p>,
+                        h2: ({ children }) => <p className="font-bold text-sm mb-1 mt-2" style={{ color: 'rgba(147,197,253,0.9)' }}>{children}</p>,
+                        h3: ({ children }) => <p className="font-semibold text-sm mb-1 mt-1.5" style={{ color: 'rgba(147,197,253,0.75)' }}>{children}</p>,
+                        p: ({ children }) => <p className="mb-1.5 leading-relaxed">{children}</p>,
+                        strong: ({ children }) => <strong className="font-semibold text-white">{children}</strong>,
+                        em: ({ children }) => <em className="italic" style={{ color: 'rgba(200,220,255,0.8)' }}>{children}</em>,
+                        ul: ({ children }) => <ul className="mb-2 space-y-1 pl-1">{children}</ul>,
+                        ol: ({ children }) => <ol className="mb-2 space-y-1 pl-1">{children}</ol>,
+                        li: ({ children }) => (
+                          <li className="flex items-start gap-2">
+                            <span className="mt-1.5 w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: '#4facfe' }} />
+                            <span>{children}</span>
+                          </li>
+                        ),
+                        table: ({ children }) => (
+                          <div className="overflow-x-auto my-2 rounded-xl" style={{ border: '1px solid rgba(255,255,255,0.1)' }}>
+                            <table className="w-full text-xs border-collapse">{children}</table>
+                          </div>
+                        ),
+                        thead: ({ children }) => <thead style={{ background: 'rgba(79,172,254,0.12)' }}>{children}</thead>,
+                        th: ({ children }) => <th className="px-3 py-2 text-left font-semibold" style={{ color: 'rgba(147,197,253,0.9)', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>{children}</th>,
+                        td: ({ children }) => <td className="px-3 py-2" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', color: 'rgba(210,225,252,0.85)' }}>{children}</td>,
+                        code: ({ children }) => <code className="px-1.5 py-0.5 rounded text-xs font-mono" style={{ background: 'rgba(255,255,255,0.1)', color: '#93c5fd' }}>{children}</code>,
+                        blockquote: ({ children }) => <blockquote className="pl-3 my-1.5 italic" style={{ borderLeft: '2px solid rgba(79,172,254,0.5)', color: 'rgba(200,220,255,0.7)' }}>{children}</blockquote>,
+                        hr: () => <hr className="my-2" style={{ borderColor: 'rgba(255,255,255,0.1)' }} />,
+                      }}
+                    >
+                      {msg.content}
+                    </ReactMarkdown>
+                  </div>
                 )}
               </div>
             </div>
@@ -410,8 +568,8 @@ export default function ChatView({ agent, conversationalAgent, onBack, onSwitchA
               'M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z',
             ].map((d, i) => (
               <button key={i} className="w-7 h-7 flex items-center justify-center rounded-full"
-                style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)' }}>
-                <svg className="w-3.5 h-3.5" style={{ color: 'rgba(255,255,255,0.35)' }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                style={{ background: t.bgCard, border: `1px solid ${t.border}` }}>
+                <svg className="w-3.5 h-3.5" style={{ color: t.textMuted }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d={d} />
                 </svg>
               </button>
@@ -424,11 +582,11 @@ export default function ChatView({ agent, conversationalAgent, onBack, onSwitchA
 
       {/* Input bar */}
       <div className="px-4 pb-8 pt-3 flex-shrink-0"
-        style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+        style={{ borderTop: `1px solid ${t.headerBorder}` }}>
         <div className="flex items-end gap-3">
           <div className="flex-1 rounded-2xl px-4 pt-3.5 pb-3" style={{
-            background: 'rgba(255,255,255,0.07)',
-            border: '1px solid rgba(255,255,255,0.1)',
+            background: t.bgInput,
+            border: `1px solid ${t.border}`,
             backdropFilter: 'blur(12px)',
           }}>
             <textarea
@@ -436,9 +594,9 @@ export default function ChatView({ agent, conversationalAgent, onBack, onSwitchA
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}
-              placeholder={isListening ? 'Listening...' : 'Ask me anything...'}
+              placeholder={isListening ? tr.listening : tr.askAnything}
               className="w-full bg-transparent text-sm outline-none resize-none"
-              style={{ color: 'rgba(255,255,255,0.9)', caretColor: '#4facfe' }}
+              style={{ color: t.textBody, caretColor: '#4facfe' }}
               disabled={isStreaming || isListening}
             />
             <div className="flex items-center gap-5 mt-3">

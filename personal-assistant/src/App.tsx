@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
 import { AuthProvider, useAuth } from './hooks/useAuth';
+import { ThemeProvider, useTheme } from './contexts/ThemeContext';
 import type { UiPathSDKConfig } from '@uipath/uipath-typescript/core';
 import { ConversationalAgent } from '@uipath/uipath-typescript/conversational-agent';
 import type { AgentGetResponse } from '@uipath/uipath-typescript/conversational-agent';
@@ -8,6 +9,7 @@ import ExploreTab from './components/ExploreTab';
 import ChatHistoryTab from './components/ChatHistoryTab';
 import ChatView from './components/ChatView';
 import ProfileTab from './components/ProfileTab';
+import AlertsTab from './components/AlertsTab';
 import BottomNav, { type Tab } from './components/BottomNav';
 
 const authConfig: UiPathSDKConfig = {
@@ -42,10 +44,12 @@ function parseToken(token: string | undefined): { firstName: string; email: stri
 
 function MainApp() {
   const { sdk, isLoading, isAuthenticated, login, logout, error } = useAuth();
+  const { isRtl } = useTheme();
   const { firstName: userName, email: userEmail } = isAuthenticated ? parseToken(sdk.getToken()) : { firstName: '', email: '' };
   const [activeTab, setActiveTab] = useState<Tab>('home');
   const [selectedAgent, setSelectedAgent] = useState<AgentGetResponse | null>(null);
   const [chatAgent, setChatAgent] = useState<AgentGetResponse | null>(null);
+  const [chatConversationId, setChatConversationId] = useState<string | undefined>(undefined);
 
   const conversationalAgent = useMemo(() => new ConversationalAgent(sdk), [sdk]);
 
@@ -105,17 +109,19 @@ function MainApp() {
   if (chatAgent) {
     return (
       <ChatView
+        key={chatAgent.id + (chatConversationId ?? '')}
         agent={chatAgent}
         conversationalAgent={conversationalAgent}
-        onBack={() => setChatAgent(null)}
-        onSwitchAgent={(a) => setChatAgent(a)}
+        onBack={() => { setChatAgent(null); setChatConversationId(undefined); }}
+        onSwitchAgent={(a) => { setChatAgent(a); setChatConversationId(undefined); }}
+        conversationId={chatConversationId}
       />
     );
   }
 
   // ── Tabbed app ────────────────────────────────────────────────────
   return (
-    <div className="flex flex-col h-full overflow-hidden" style={{ background: '#000' }}>
+    <div className="flex flex-col h-full overflow-hidden" dir={isRtl ? 'rtl' : 'ltr'} style={{ background: '#000' }}>
       <div className="flex-1 overflow-hidden">
         {activeTab === 'home' && (
           <HomeTab
@@ -128,7 +134,14 @@ function MainApp() {
           />
         )}
         {activeTab === 'chat' && (
-          <ChatHistoryTab onExplore={() => setActiveTab('explore')} />
+          <ChatHistoryTab
+            onExplore={() => setActiveTab('explore')}
+            conversationalAgent={conversationalAgent}
+            onOpenChat={(agent, conversationId) => {
+              setChatAgent(agent);
+              setChatConversationId(conversationId);
+            }}
+          />
         )}
         {activeTab === 'explore' && (
           <ExploreTab
@@ -139,6 +152,7 @@ function MainApp() {
             }}
           />
         )}
+        {activeTab === 'alerts' && <AlertsTab />}
         {activeTab === 'profile' && (
           <ProfileTab userName={userName} userEmail={userEmail} onLogout={logout} />
         )}
@@ -156,8 +170,10 @@ function MainApp() {
 
 export default function App() {
   return (
-    <AuthProvider config={authConfig}>
-      <MainApp />
-    </AuthProvider>
+    <ThemeProvider>
+      <AuthProvider config={authConfig}>
+        <MainApp />
+      </AuthProvider>
+    </ThemeProvider>
   );
 }
