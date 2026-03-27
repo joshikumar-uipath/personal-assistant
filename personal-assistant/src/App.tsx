@@ -147,8 +147,8 @@ function MainApp() {
           <ExploreTab
             conversationalAgent={conversationalAgent}
             onSelectAgent={(agent) => {
-              setSelectedAgent(agent);
-              setActiveTab('home');
+              setChatAgent(agent);
+              setChatConversationId(undefined);
             }}
           />
         )}

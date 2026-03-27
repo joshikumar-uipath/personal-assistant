@@ -162,7 +162,9 @@ export default function ChatView({ agent, conversationalAgent, onBack, onSwitchA
           try {
             const exchangesResult = await conv.exchanges.getAll();
             const loaded: ChatMessage[] = [];
-            for (const exchange of exchangesResult.items) {
+            // SDK returns exchanges newest-first; reverse for chronological display
+            const orderedExchanges = [...exchangesResult.items].reverse();
+            for (const exchange of orderedExchanges) {
               for (const message of exchange.messages) {
                 const parts = message.contentParts ?? [];
                 let content = '';
